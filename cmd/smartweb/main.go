@@ -1,4 +1,4 @@
-package smartweb
+package main
 
 import (
 	"flag"
