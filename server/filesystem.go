@@ -2,8 +2,10 @@ package server
 
 import (
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 )
 
 type Entry interface {
@@ -12,6 +14,8 @@ type Entry interface {
 
 	Create() (EntryWriter, error)
 	Open() (EntryReader, error)
+	Read() ([]byte, error)
+	Write([]byte) error
 	Delete() error
 	DeleteAll() error
 
@@ -33,7 +37,8 @@ type EntryWriter interface {
 }
 
 type FSEntry struct {
-	Path string
+	PathDot string
+	name    string
 }
 
 type FSEntryWriter struct {
@@ -41,16 +46,18 @@ type FSEntryWriter struct {
 }
 
 func (e FSEntry) Name() string {
-	return path.Base(e.Path)
+	return e.name
 }
 
 func (e FSEntry) Exists() bool {
-	_, err := os.Stat(e.Path + ".data")
+	_, err := os.Stat(e.PathDot + "data")
 	return err != nil
 }
 
 func (e FSEntry) Create() (EntryWriter, error) {
-	f, err := os.Create(e.Path + ".data.tmp")
+	os.MkdirAll(path.Dir(e.PathDot), 0777)
+
+	f, err := os.Create(e.PathDot + "data-tmp")
 	if f == nil {
 		return nil, err
 	} else {
@@ -65,36 +72,68 @@ func (f *FSEntryWriter) Commit() error {
 }
 
 func (e FSEntry) Open() (EntryReader, error) {
-	return os.Open(e.Path + ".data")
+	return os.Open(e.PathDot + "data")
+}
+
+func (e FSEntry) Read() ([]byte, error) {
+	f, err := e.Open()
+	if err != nil {
+		return []byte{}, err
+	}
+	defer f.Close()
+
+	return ioutil.ReadAll(f)
+}
+
+func (e FSEntry) Write(s []byte) error {
+	f, err := e.Create()
+	if err != nil {
+		return err
+	}
+	defer f.Commit()
+	defer f.Close()
+
+	_, err = f.Write(s)
+	return err
 }
 
 func (e FSEntry) Delete() error {
-	return os.Remove(e.Path + ".data")
+	err := os.Remove(e.PathDot + "data")
+	if err != nil && os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func (e FSEntry) DeleteAll() error {
-	err := os.Remove(e.Path + ".data")
+	err := os.Remove(e.PathDot + "data")
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	err = os.RemoveAll(e.PathDot + "meta")
 	if err != nil {
 		return err
 	}
 
-	err = os.RemoveAll(e.Path + ".meta")
+	err = os.RemoveAll(e.PathDot + "metadir")
 	if err != nil {
 		return err
 	}
 
-	err = os.RemoveAll(e.Path + ".dir")
+	err = os.RemoveAll(e.PathDot + "dir")
 	return err
 }
 
 func (e FSEntry) Parameters() Entry {
-	return FSEntry{
-		Path: e.Path + ".meta",
+	return &FSEntry{
+		name:    "",
+		PathDot: e.PathDot + "meta",
 	}
 }
 
 func (e FSEntry) Children() ([]Entry, error) {
-	f, err := os.Open(e.Path + ".dir")
+	f, err := os.Open(e.PathDot + "dir")
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +143,36 @@ func (e FSEntry) Children() ([]Entry, error) {
 	var res []Entry
 
 	for i := range names {
-		res = append(res, FSEntry{Path: path.Join(e.Path+".dir", names[i])})
+		name := names[i]
+		e := &FSEntry{
+			name:    name,
+			PathDot: path.Join(e.PathDot+"dir", name) + ".",
+		}
+		res = append(res, e)
 	}
 
 	return res, err
 }
 
 func (e FSEntry) Child(name string) Entry {
-	return FSEntry{
-		Path: path.Join(e.Path+".dir", name),
+	n := name
+	for len(n) > 0 && n[0] == '/' {
+		n = n[1:]
+	}
+	if len(n) == 0 {
+		return e
+	}
+
+	n = strings.Replace(n, "/", ".dir/", -1)
+	p := path.Join(e.PathDot+"dir", n)
+	if name[len(name)-1] == '/' {
+		p = p + "/"
+	} else {
+		p = p + "."
+	}
+
+	return &FSEntry{
+		name:    path.Base(n),
+		PathDot: p,
 	}
 }

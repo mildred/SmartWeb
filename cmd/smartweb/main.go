@@ -13,13 +13,11 @@ func main() {
 	var path = flag.String("path", "./", "Path to serve")
 	flag.Parse()
 
-	var server = &server.SmartServer{
-		DataPath: *path,
-	}
+	srv := server.CreateFileServer(*path)
 
 	s := &http.Server{
 		Addr:           *listen,
-		Handler:        server,
+		Handler:        srv,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,

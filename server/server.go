@@ -2,14 +2,20 @@ package server
 
 import (
 	"io"
+	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 type SmartServer struct {
-	DataPath string
+	Root Entry
+}
+
+func CreateFileServer(path string) *SmartServer {
+	return &SmartServer{
+		Root: FSEntry{
+			PathDot: path,
+		},
+	}
 }
 
 func handleError(res http.ResponseWriter, status int, err string) {
@@ -18,28 +24,25 @@ func handleError(res http.ResponseWriter, status int, err string) {
 	res.Write([]byte(err))
 }
 
-func (server SmartServer) getFile(path string) string {
-	var p = filepath.Clean(path)
-	if p[0] == '/' {
-		p = p[1:]
-	}
-	p = strings.Replace(p, "/", ".dir/", -1)
-	p = filepath.Join(server.DataPath, p)
-	return p
-}
-
 func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) {
-	var p = server.getFile(req.URL.Path)
+	entry := server.Root.Child(req.URL.Path)
+	meta := entry.Parameters()
 
-	var meta MetaData = read(p)
-	for header := range meta.Headers {
-		res.Header().Set(header, meta.Headers[header])
-	}
-
-	var f, err = os.Open(p + ".data")
+	f, err := entry.Open()
 	if err != nil {
 		handleError(res, http.StatusNotFound, err.Error())
 		return
+	}
+	defer f.Close()
+
+	if headers, err := meta.Child("headers").Children(); err != nil {
+		for h := range headers {
+			if data, err := headers[h].Read(); err == nil {
+				log.Println(err)
+			} else {
+				res.Header().Set(string(headers[h].Name()), string(data))
+			}
+		}
 	}
 
 	res.WriteHeader(http.StatusOK)
@@ -47,32 +50,29 @@ func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) 
 	if req.Method != "HEAD" {
 		io.Copy(res, f)
 	}
-
-	f.Close()
 }
 
 func (server SmartServer) handlePUT(res http.ResponseWriter, req *http.Request) {
-	var p = server.getFile(req.URL.Path)
-	var dir = filepath.Dir(p)
-	os.MkdirAll(dir, 0777)
+	entry := server.Root.Child(req.URL.Path)
+	meta := entry.Parameters()
+	headers := meta.Child("headers")
+	exists := entry.Exists()
 
-	var meta MetaData = createMeta()
-	if contentType := req.Header.Get("Content-Type"); contentType != "" {
-		meta.Headers["Content-Type"] = contentType
-	}
-
-	err := meta.write(p)
+	err := headers.DeleteAll()
 	if err != nil {
 		handleError(res, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	var successStatus = http.StatusNoContent
-	if _, e := os.Stat(p + ".data"); e != nil {
-		successStatus = http.StatusCreated
+	if contentType := req.Header.Get("Content-Type"); contentType != "" {
+		err = headers.Child("Content-Type").Write([]byte(contentType))
+		if err != nil {
+			handleError(res, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
-	f, err := os.Create(p + ".data.tmp")
+	f, err := entry.Create()
 	if err != nil {
 		handleError(res, http.StatusInternalServerError, err.Error())
 		return
@@ -85,13 +85,17 @@ func (server SmartServer) handlePUT(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	err = os.Rename(p+".data.tmp", p+".data")
+	err = f.Commit()
 	if err != nil {
 		handleError(res, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	res.WriteHeader(successStatus)
+	if exists {
+		res.WriteHeader(http.StatusNoContent)
+	} else {
+		res.WriteHeader(http.StatusCreated)
+	}
 }
 
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
