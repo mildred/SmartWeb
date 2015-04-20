@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -139,14 +140,21 @@ func (e FSEntry) Children() ([]Entry, error) {
 	}
 
 	names, err := f.Readdirnames(-1)
-
+	sort.Strings(names)
 	var res []Entry
+	var lastName string
 
-	for i := range names {
-		name := names[i]
+	for i, name := range names {
+		j := strings.LastIndex(name, ".")
+		if j == -1 {
+			continue
+		} else if i > 0 && lastName == name[:j] {
+			continue
+		}
+		lastName = name[:j]
 		e := &FSEntry{
-			name:    name,
-			PathDot: path.Join(e.PathDot+"dir", name) + ".",
+			name:    lastName,
+			PathDot: path.Join(e.PathDot+"dir", lastName) + ".",
 		}
 		res = append(res, e)
 	}

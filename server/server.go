@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 type SmartServer struct {
@@ -24,8 +25,17 @@ func handleError(res http.ResponseWriter, status int, err string) {
 	res.Write([]byte(err))
 }
 
+func (server SmartServer) getEntry(Url *url.URL) Entry {
+	entry := server.Root.Child(Url.Path)
+	meta_values := Url.Query()["meta"]
+	for _, meta := range meta_values {
+		entry = entry.Parameters().Child(meta)
+	}
+	return entry
+}
+
 func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) {
-	entry := server.Root.Child(req.URL.Path)
+	entry := server.getEntry(req.URL)
 	meta := entry.Parameters()
 
 	f, err := entry.Open()
@@ -35,12 +45,12 @@ func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) 
 	}
 	defer f.Close()
 
-	if headers, err := meta.Child("headers").Children(); err != nil {
-		for h := range headers {
-			if data, err := headers[h].Read(); err == nil {
+	if headers, err := meta.Child("headers").Children(); err == nil {
+		for _, header := range headers {
+			if data, err := header.Read(); err != nil {
 				log.Println(err)
 			} else {
-				res.Header().Set(string(headers[h].Name()), string(data))
+				res.Header().Set(string(header.Name()), string(data))
 			}
 		}
 	}
@@ -53,7 +63,7 @@ func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) 
 }
 
 func (server SmartServer) handlePUT(res http.ResponseWriter, req *http.Request) {
-	entry := server.Root.Child(req.URL.Path)
+	entry := server.getEntry(req.URL)
 	meta := entry.Parameters()
 	headers := meta.Child("headers")
 	exists := entry.Exists()
