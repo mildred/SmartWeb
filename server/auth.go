@@ -40,6 +40,7 @@ func CreateAuthenticator() Authenticator {
 }
 
 var nonceValidity = time.Minute * 5
+var AnonymousAuthDomain string = "anonymous"
 
 func RandomKey() (string, error) {
 	var data [12]byte
@@ -190,7 +191,13 @@ func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time
 			}
 		}
 	}
-	return false, stale, errors
+
+	allow, err := getAuthPerms(entry, AnonymousAuthDomain, req.Method)
+	if err != nil {
+		errors = append(errors, err)
+	}
+
+	return allow, stale, errors
 }
 
 func (Auth *Authenticator) Authenticate(entry Entry, res http.ResponseWriter, req *http.Request) bool {
@@ -249,6 +256,9 @@ func authList(entry Entry) ([]string, []error) {
 		}
 		for _, auth := range auth_list {
 			found := false
+			if auth.Name() == AnonymousAuthDomain {
+				continue
+			}
 			for _, v := range res_auths {
 				if v == auth.Name() {
 					found = true
