@@ -9,13 +9,13 @@ import (
 
 type SmartServer struct {
 	Root Entry
+	auth Authenticator
 }
 
 func CreateFileServer(path string) *SmartServer {
 	return &SmartServer{
-		Root: FSEntry{
-			PathDot: path,
-		},
+		Root: CreateFSEntry(path),
+		auth: CreateAuthenticator(),
 	}
 }
 
@@ -37,6 +37,13 @@ func (server SmartServer) getEntry(Url *url.URL) Entry {
 func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) {
 	entry := server.getEntry(req.URL)
 	meta := entry.Parameters()
+
+	allowed := server.auth.Authenticate(entry, res, req)
+
+	if !allowed {
+		res.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 
 	f, err := entry.Open()
 	if err != nil {

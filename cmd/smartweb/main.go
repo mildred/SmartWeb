@@ -10,7 +10,7 @@ import (
 
 func main() {
 	var listen = flag.String("listen", ":8000", "Address to listen to")
-	var path = flag.String("path", "./", "Path to serve")
+	var path = flag.String("path", "./web", "Path to serve")
 	flag.Parse()
 
 	srv := server.CreateFileServer(*path)
