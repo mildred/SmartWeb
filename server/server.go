@@ -34,16 +34,8 @@ func (server SmartServer) getEntry(Url *url.URL) Entry {
 	return entry
 }
 
-func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) {
-	entry := server.getEntry(req.URL)
+func (server SmartServer) handleGET(entry Entry, res http.ResponseWriter, req *http.Request) {
 	meta := entry.Parameters()
-
-	allowed := server.auth.Authenticate(entry, res, req)
-
-	if !allowed {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
 
 	f, err := entry.Open()
 	if err != nil {
@@ -69,8 +61,7 @@ func (server SmartServer) handleGET(res http.ResponseWriter, req *http.Request) 
 	}
 }
 
-func (server SmartServer) handlePUT(res http.ResponseWriter, req *http.Request) {
-	entry := server.getEntry(req.URL)
+func (server SmartServer) handlePUT(entry Entry, res http.ResponseWriter, req *http.Request) {
 	meta := entry.Parameters()
 	headers := meta.Child("headers")
 	exists := entry.Exists()
@@ -116,10 +107,17 @@ func (server SmartServer) handlePUT(res http.ResponseWriter, req *http.Request) 
 }
 
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	entry := server.getEntry(req.URL)
+
+	if !server.auth.Authenticate(entry, res, req) {
+		res.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	if req.Method == "GET" || req.Method == "HEAD" {
-		server.handleGET(res, req)
+		server.handleGET(entry, res, req)
 	} else if req.Method == "PUT" {
-		server.handlePUT(res, req)
+		server.handlePUT(entry, res, req)
 	} else {
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}

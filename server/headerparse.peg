@@ -6,26 +6,39 @@ type HeaderParser Peg {
 	last_value string
 }
 
-start <- header !.
+start            <- header !.
+header           <- ws* challenge_cred (ws* "," ws* challenge_cred)? ws*
+challenge_cred   <- auth_scheme auth_params/auth_singleparam
+auth_params      <- ws_or_comma auth_param_key ws* "=" ws* auth_param_val auth_params*
+auth_param_val   <- auth_param_sval / auth_param_tval
+quoted_string    <- quoted_str_begin '"' (!'"' !'\\' quoted_str_char /  '\\' quoted_str_char)* '"'
+ws_or_comma      <- ws+ / ws* "," ws*
 
-header <- (',' ws*)* challenge_cred (ws* ',' (ws* challenge_cred)?)*
+auth_scheme      <- <token>{         p.addAuthScheme(buffer[begin:end]) }
+auth_singleparam <- <token68>{       p.setB64Param(buffer[begin:end])   }
+auth_param_key   <- <token>{         p.param_name = buffer[begin:end]   }
+auth_param_sval  <- <quoted_string>{ p.setParam(p.param_name, p.last_value) }
+auth_param_tval  <- <token>{         p.setParam(p.param_name, buffer[begin:end]) }
+quoted_str_begin <- {                p.last_value = "" }
+quoted_str_char  <- <.>{  p.last_value = p.last_value + buffer[begin:end] }
+
+
+#header <- (',' ws*)* challenge_cred (ws* ',' (ws* challenge_cred)?)*
 
 #challenge_cred <- auth_scheme (auth_params / ws+ auth_b64param?)
-challenge_cred <- auth_scheme auth_params
 #auth_b64param  <- < token68 > { p.setB64Param(buffer[begin:end]) }
-auth_scheme    <- < token   > { p.addAuthScheme(buffer[begin:end]) }
-auth_params    <- ( ',' / ws+ auth_param ) (ws* ',' (ws* auth_param)?)*
-auth_param     <- < token   > { p.param_name = buffer[begin:end] }
-                  ws* '=' ws* auth_param_val
-auth_param_val <- < token > { p.setParam(p.param_name, buffer[begin:end]) }
-                  / quoted_string { p.setParam(p.param_name, p.last_value) }
+#auth_scheme    <- < token   > { p.addAuthScheme(buffer[begin:end]) }
+#auth_params    <- ( ',' / ws+ auth_param ) (ws* ',' (ws* auth_param)?)*
+#auth_param     <- < token   > { p.param_name = buffer[begin:end] }
+#                  ws* '=' ws* auth_param_val
+#auth_param_val <- < token > { p.setParam(p.param_name, buffer[begin:end]) }
+#                  / quoted_string { p.setParam(p.param_name, p.last_value) }
 
-quoted_string <- { p.last_value = "" }
-                 '"' ( quoted_text / quoted_pair )* '"'
-quoted_text   <- < [~"\\] > { p.last_value = p.last_value + buffer[begin:end] }
-quoted_pair   <- '\\' < . > { p.last_value = p.last_value + buffer[begin:end] }
+#quoted_string <- { p.last_value = "" }
+#                 '"' ( quoted_text / quoted_pair )* '"'
+#quoted_text   <- < [~"\\] > { p.last_value = p.last_value + buffer[begin:end] }
+#quoted_pair   <- '\\' < . > { p.last_value = p.last_value + buffer[begin:end] }
 
 token   <- ([A-Za-z0-9] / '!' / '#' / '$' / '%' / '&' / '\'' / '*' / '+' / '-' / '.' / '^' / '_' / '`' / '|' / '~')+
-#token68 <- ([A-Za-z0-9] / '-' / '.' / '_' / '~' / '+' / '/')+ '='*
-
-ws <- [\t ]
+token68 <- ([A-Za-z0-9] / '-' / '.' / '_' / '~' / '+' / '/')+ '='*
+ws      <- [\t ]

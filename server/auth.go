@@ -64,13 +64,13 @@ func getAuthParams(req *http.Request) []AuthMethod {
 	var methods []AuthMethod
 
 	for _, h := range req.Header["Authorization"] {
-		log.Printf("%#v\n", h)
 		parser := HeaderParser{Buffer: h}
 		parser.Init()
 		if err := parser.Parse(); err != nil {
 			log.Println(err)
+		} else {
+			parser.Execute()
 		}
-		log.Printf("%#v\n", parser)
 		for _, m := range parser.Methods {
 			methods = append(methods, m)
 		}
@@ -80,7 +80,8 @@ func getAuthParams(req *http.Request) []AuthMethod {
 
 func (auth *Authenticator) purge(now time.Time) {
 	for k, nonce := range auth.nonces {
-		if nonce.Time.Add(nonce.Validity).After(now) {
+		if nonce.Time.Add(nonce.Validity).Before(now) {
+			//log.Printf("Purge nonce %s\n", k)
 			delete(auth.nonces, k)
 		}
 	}
@@ -97,6 +98,8 @@ func (auth *Authenticator) generateNonce(domain string, realm string, time time.
 		return "", "", err
 	}
 
+	//log.Printf("Generate nonce %s\n", key)
+
 	auth.nonces[key] = Nonce{
 		Time:     time,
 		Validity: valid,
@@ -108,6 +111,7 @@ func (auth *Authenticator) generateNonce(domain string, realm string, time time.
 }
 
 func (auth *Authenticator) checkNonce(noncekey string, nonce_count string, now time.Time) (bool, string, string, string) {
+	// FIXME do something with nonce_count
 	nonce, ok := auth.nonces[noncekey]
 	if !ok {
 		return false, "", "", ""
@@ -115,9 +119,10 @@ func (auth *Authenticator) checkNonce(noncekey string, nonce_count string, now t
 	opaque := nonce.Opaque
 	auth_domain := nonce.Domain
 	auth_realm := nonce.Realm
-	valid := !nonce.Time.Add(nonce.Validity).After(now)
+	valid := nonce.Time.Add(nonce.Validity).After(now)
 	if !valid {
 		delete(auth.nonces, noncekey)
+		//log.Printf("Purge stale nonce %s\n", noncekey)
 	}
 	return valid, opaque, auth_domain, auth_realm
 }
@@ -127,8 +132,6 @@ func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time
 	var stale = false
 
 	auth_params := getAuthParams(req)
-	log.Println(auth_params)
-
 	for _, auth := range auth_params {
 		if auth.Name == "Digest" {
 			algorithm := auth.Params["algorithm"]
@@ -142,17 +145,17 @@ func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time
 			nonce_count := auth.Params["nc"]
 
 			if algorithm != "MD5" || qop != "auth" {
-				fmt.Println("Invalid algorithm or qop")
+				//log.Println("Invalid algorithm or qop")
 				continue
 			}
 
 			ok, nonce_opaque, auth_domain, auth_realm := Auth.checkNonce(nonce, nonce_count, now)
 			if !ok {
 				stale = true
-				fmt.Println("Stale nonce")
+				//log.Println("Stale nonce " + nonce + " count: " + nonce_count)
 				continue
 			} else if opaque != nonce_opaque {
-				fmt.Printf("Opaque data invalid %s %s\n", opaque, nonce_opaque)
+				//log.Printf("Opaque data invalid %s %s\n", opaque, nonce_opaque)
 				continue
 			}
 
