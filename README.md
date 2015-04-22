@@ -91,6 +91,10 @@ semantic.
 
 * `LIST` to list children in a directory
 
+* `REQUEST-LINK` request a link to be made from the resource to another given as
+  argument. This could be used to advertise backlinks. Perhaps this is a
+  candidate for `POST`.
+
 
 Authentication
 --------------
