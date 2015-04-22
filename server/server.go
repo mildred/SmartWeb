@@ -63,7 +63,7 @@ func (server SmartServer) handleGET(entry Entry, res http.ResponseWriter, req *h
 
 func (server SmartServer) handlePUT(entry Entry, res http.ResponseWriter, req *http.Request) {
 	meta := entry.Parameters()
-	headers := meta.Child("headers")
+	headers := meta.Child("headers/")
 	exists := entry.Exists()
 
 	err := headers.DeleteAll()
@@ -106,6 +106,16 @@ func (server SmartServer) handlePUT(entry Entry, res http.ResponseWriter, req *h
 	}
 }
 
+func (server SmartServer) handleDELETE(entry Entry, res http.ResponseWriter, req *http.Request) {
+	err := entry.DeleteAll()
+	if err != nil {
+		handleError(res, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	res.WriteHeader(http.StatusNoContent)
+}
+
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	entry := server.getEntry(req.URL)
 
@@ -118,6 +128,8 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		server.handleGET(entry, res, req)
 	} else if req.Method == "PUT" {
 		server.handlePUT(entry, res, req)
+	} else if req.Method == "DELETE" {
+		server.handleDELETE(entry, res, req)
 	} else {
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}

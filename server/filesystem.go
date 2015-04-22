@@ -168,11 +168,6 @@ func (e FSEntry) DeleteAll() error {
 	}
 
 	err = os.RemoveAll(e.PathDot + "metadir")
-	if err != nil {
-		return err
-	}
-
-	err = os.RemoveAll(e.PathDot + "dir")
 	return err
 }
 
