@@ -7,8 +7,6 @@ import (
 	"net/url"
 )
 
-var StatusUpgradeRequired int = 426
-
 type SmartServer struct {
 	Root Entry
 	auth Authenticator
@@ -122,15 +120,7 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 	entry := server.getEntry(req.URL)
 
 	if !server.auth.Authenticate(entry, res, req) {
-		//res.WriteHeader(http.StatusUnauthorized)
-		res.Header().Set("Upgrade", "TLS/1.0, HTTP/1.1")
-		res.Header().Set("Connection", "Upgrade")
-		/*if r, ok := res.(http.Response); ok {
-			r.Status = "426 Upgrade Required"
-			r.StatusCode = StatusUpgradeRequired
-			res.Write([]byte{})
-		}*/
-		res.WriteHeader(StatusUpgradeRequired)
+		res.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
