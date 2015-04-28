@@ -128,9 +128,10 @@ func (auth *Authenticator) checkNonce(noncekey string, nonce_count string, now t
 	return valid, opaque, auth_domain, auth_realm
 }
 
-func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time.Time) (bool, bool, []error) {
+func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time.Time) (bool, bool, bool, []error) {
 	var errors []error
 	var stale = false
+	var found_auth_all = false
 
 	auth_params := getAuthParams(req)
 	for _, auth := range auth_params {
@@ -181,23 +182,25 @@ func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time
 				continue
 			}
 
-			allow, err := getAuthPerms(entry, auth_domain, req.Method)
+			allow, found_auth, err := getAuthPerms(entry, auth_domain, req.Method)
+			found_auth_all = found_auth_all || found_auth
 			if err != nil {
 				errors = append(errors, err)
 			}
 
 			if allow {
-				return true, false, errors
+				return true, found_auth_all, false, errors
 			}
 		}
 	}
 
-	allow, err := getAuthPerms(entry, AnonymousAuthDomain, req.Method)
+	allow, found_auth, err := getAuthPerms(entry, AnonymousAuthDomain, req.Method)
+	found_auth_all = found_auth_all || found_auth
 	if err != nil {
 		errors = append(errors, err)
 	}
 
-	return allow, stale, errors
+	return allow, found_auth_all, stale, errors
 }
 
 func (Auth *Authenticator) Authenticate(entry Entry, res http.ResponseWriter, req *http.Request) bool {
@@ -207,7 +210,7 @@ func (Auth *Authenticator) Authenticate(entry Entry, res http.ResponseWriter, re
 	now := time.Now()
 	Auth.purge(now)
 
-	authorized, stale, errors := Auth.checkRequest(entry, req, now)
+	authorized, found_auth, stale, errors := Auth.checkRequest(entry, req, now)
 	if len(errors) > 0 {
 		for err := range errors {
 			fmt.Println(err)
@@ -240,7 +243,11 @@ func (Auth *Authenticator) Authenticate(entry Entry, res http.ResponseWriter, re
 		}
 	}
 
-	return len(auths) == 0 || authorized
+	if found_auth {
+		return authorized
+	} else {
+		return len(auths) == 0
+	}
 }
 
 func authList(entry Entry) ([]string, []error) {
@@ -334,27 +341,28 @@ func getAuthCreds(entry Entry, auth string, method string, username string) (boo
 	return false, []byte{}, nil
 }
 
-func getAuthPerms(entry Entry, auth string, method string) (bool, error) {
+func getAuthPerms(entry Entry, auth string, method string) (bool, bool, error) {
 	for ent := entry; ent != nil; ent = ent.Parent(true) {
-		auth := entry.Parameters().Child("auth").Child(auth)
+		auth := ent.Parameters().Child("auth").Child(auth)
 
 		if data, err := auth.Child(method + ".perm").Read(); err == nil {
-			return string(data) == "allow", nil
+			//log.Printf("%v %v %v\n", auth, string(data), strings.TrimSpace(string(data)) == "allow")
+			return strings.TrimSpace(string(data)) == "allow", true, nil
 		} else if err != nil && os.IsExist(err) {
-			return false, err
+			return false, true, err
 		}
 
 		if data, err := auth.Child("default.perm").Read(); err == nil {
-			return string(data) == "allow", nil
+			return strings.TrimSpace(string(data)) == "allow", true, nil
 		} else if err != nil && os.IsExist(err) {
-			return false, err
+			return false, true, err
 		}
 
-		if !auth.Child("inherit").Exists() {
+		if auth.DirExists() && !auth.Child("inherit").Exists() {
 			break
 		}
 	}
-	return false, nil
+	return false, false, nil
 }
 
 func getPath(entry Entry) string {

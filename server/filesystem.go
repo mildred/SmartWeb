@@ -21,6 +21,7 @@ import (
 type Entry interface {
 	Name() string
 	Exists() bool
+	DirExists() bool
 	Parent(force bool) Entry
 
 	Create() (EntryWriter, error)
@@ -74,6 +75,11 @@ func (e FSEntry) Name() string {
 func (e FSEntry) Exists() bool {
 	_, err := os.Stat(e.PathDot + "data")
 	return err != nil
+}
+
+func (e FSEntry) DirExists() bool {
+	res, err := e.Children()
+	return err == nil && len(res) > 0
 }
 
 func (e FSEntry) Parent(force bool) Entry {
