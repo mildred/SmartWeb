@@ -6,6 +6,9 @@ import (
 	"github.com/mildred/SmartWeb/server"
 	"log"
 	"net"
+	"path/filepath"
+	"crypto/tls"
+	"os"
 	"net/http"
 	"time"
 )
@@ -44,14 +47,42 @@ func main() {
 		log.Fatal(err)
 		return
 	}
+	
+	keypath := filepath.Join(*path, "key.pem");
+	certpath := filepath.Join(*path, "cert.pem");
+	cert, err := tls.LoadX509KeyPair(certpath, keypath)
+	var config *tls.Config
+	if err == nil {
+		config = httpmux.NewTLSConfig([]tls.Certificate{cert})
+	} else {
+		keyfile, err1 := os.Create(keypath)
+		certfile, err2 := os.Create(certpath)
+		if keyfile != nil  { defer keyfile.Close(); }
+		if certfile != nil { defer certfile.Close(); }
 
-	log.Println("Generating self signed certificate...")
-
-	config, err := httpmux.NewSelfSignedRSAConfig(4096)
-	if err != nil {
-		log.Fatalf("Error generating certificate: %v\n", err)
-		return
+		log.Println(err);
+		log.Println("Generating 2048 bits RSA self signed certificate...")
+	
+		var certBytes []byte
+		var keyBytes  []byte
+		config, certBytes, keyBytes, err = httpmux.NewSelfSignedRSAConfig(2048)
+		if err != nil {
+			log.Fatalf("Error generating certificate: %v\n", err)
+			return
+		}
+		
+		if err1 == nil && err2 == nil {
+			_, err1 = keyfile.Write(keyBytes);
+			_, err2 = certfile.Write(certBytes);
+		}
+		if err1 != nil {
+			log.Fatalf("%s: %v\n", keypath, err1);
+		}
+		if err2 != nil {
+			log.Fatalf("%s: %v\n", certpath, err2);
+		}
 	}
+
 
 	listener := httpmux.NewListenerConfig(tcpKeepAliveListener{ln.(*net.TCPListener)}, config)
 

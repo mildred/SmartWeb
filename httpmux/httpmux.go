@@ -9,24 +9,32 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"io"
-	//"log"
 	"math/big"
 	"net"
 	"time"
 )
 
-func NewSelfSignedRSAConfig(rsaBits int) (*tls.Config, error) {
+func NewTLSConfig(certificates []tls.Certificate) *tls.Config {
+	config := &tls.Config{
+		Certificates: certificates,
+		ClientAuth: tls.RequestClientCert,
+	}
+
+	return config
+}
+
+func NewSelfSignedRSAConfig(rsaBits int) (config *tls.Config, certBytes []byte, keyBytes []byte, err error) {
 	now := time.Now()
 
 	priv, err := rsa.GenerateKey(rand.Reader, rsaBits)
 	if err != nil {
-		return nil, err
+		return nil, certBytes, keyBytes, err
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, err
+		return nil, certBytes, keyBytes, err
 	}
 
 	template := x509.Certificate{
@@ -34,8 +42,8 @@ func NewSelfSignedRSAConfig(rsaBits int) (*tls.Config, error) {
 		Subject: pkix.Name{
 			Organization: []string{"SmartWeb"},
 		},
-		NotBefore: now.Add(-1 * time.Minute),
-		NotAfter:  now.Add(5 * time.Minute), // FIXME allow for more than 5 minutes of uptime
+		NotBefore: now.Add(-1 * 24 * time.Hour),
+		NotAfter:  now.Add(30 * 24 * time.Hour),
 
 		IsCA:                  true,
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -47,22 +55,19 @@ func NewSelfSignedRSAConfig(rsaBits int) (*tls.Config, error) {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
-		return nil, err
+		return nil, certBytes, keyBytes, err
 	}
 
-	certBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	keyBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	certBytes = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyBytes = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	cert, err := tls.X509KeyPair(certBytes, keyBytes)
 	if err != nil {
-		return nil, err
+		return nil, certBytes, keyBytes, err
 	}
 
-	config := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-	}
-
-	return config, nil
+	config = NewTLSConfig([]tls.Certificate{cert})
+	return config, certBytes, keyBytes, nil
 }
 
 type Listener struct {

@@ -12,6 +12,29 @@ This is very powerful, especially considering that the meta entries can
 themselves have meta entries of their own, and directories and non-directories
 entry are separate.
 
+TLS Connections
+---------------
+
+The server can accept both HTTP and HTTPS connections on the same port. It uses
+heuristics to determine if the TLS tunnel is to be started depending on the
+client first message. If there is no certificate, the server will generate one
+but it might not be appropriate for all user agents. To generate a self signed
+certificate yourself, use the following command line:
+
+    openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -subj '/CN=*'
+
+Client certificates are accepted. To generate a self signed client certificate,
+use:
+
+    openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj '/CN=CommonName'
+    openssl pkcs12 -export -in cert.pem -inkey key.pem -out client-cert.p12 -nodes
+
+Then import the `client-cert.p12` into Firefox
+
+(see [X520](http://www.itu.int/rec/T-REC-X.520) and
+[RFC 5280 section 4.1.2.4](https://tools.ietf.org/html/rfc5280#section-4.1.2.4)
+for the subject string)
+
 Entries URI
 -----------
 

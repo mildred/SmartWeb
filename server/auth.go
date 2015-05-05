@@ -3,7 +3,10 @@ package server
 import (
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/x509"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -52,9 +55,8 @@ func escape(s string) string {
 	return strings.Replace(strings.Replace(s, "\\", "\\\\", -1), "\"", "\\\"", -1)
 }
 
-/*
- h function for MD5 algorithm (returns a lower-case hex MD5 digest)
-*/
+/* h function for MD5 algorithm (returns a lower-case hex MD5 digest)
+ */
 func h(data string) string {
 	digest := md5.New()
 	digest.Write([]byte(data))
@@ -132,6 +134,39 @@ func (Auth *Authenticator) checkRequest(entry Entry, req *http.Request, now time
 	var errors []error
 	var stale = false
 	var found_auth_all = false
+		
+	if req.TLS != nil {
+		certs := req.TLS.PeerCertificates;
+		for _, cert := range certs {
+			authList, ers := authList(entry);
+			if len(ers) > 0 {
+				for _, e := range ers { errors = append(errors, e); }
+			}
+			for _, authDomainName := range authList {
+				found, _, err := getAuthCredsCert(entry, authDomainName, *cert)
+				if err != nil {
+					errors = append(errors, err)
+					continue
+				} else if !found {
+					continue
+				}
+				
+				allow, found_auth, err := getAuthPerms(entry, authDomainName, req.Method)
+				
+				found_auth_all = found_auth_all || found_auth
+				if err != nil {
+					errors = append(errors, err)
+				}
+	
+				if allow {
+					return true, found_auth_all, false, errors
+				}
+			}
+
+			fingerprint := strings.ToLower(hex.EncodeToString(Fingerprint(*cert)))
+			log.Printf("TLS Authentication failure for certificate %s.sha256\n", fingerprint)
+		}
+	}
 
 	auth_params := getAuthParams(req)
 	for _, auth := range auth_params {
@@ -341,6 +376,31 @@ func getAuthCreds(entry Entry, auth string, method string, username string) (boo
 	return false, []byte{}, nil
 }
 
+func getAuthCredsCert(entry Entry, auth string, cert x509.Certificate) (bool, []byte, error) {
+	fingerprint := strings.ToLower(hex.EncodeToString(Fingerprint(cert)))
+	for ent := entry; ent != nil; ent = ent.Parent(true) {
+		auth := entry.Parameters().Child("auth").Child(auth)
+		if !auth.Exists() {
+			continue
+		}
+
+		users := auth.Child("certificates")
+		user := users.Child(fingerprint + ".sha256")
+
+		data, e := user.Read()
+		if e == nil {
+			return true, data, nil
+		} else if e != nil && os.IsExist(e) {
+			return false, []byte{}, e
+		}
+
+		if !auth.Child("inherit").Exists() {
+			break
+		}
+	}
+	return false, []byte{}, nil
+}
+
 func getAuthPerms(entry Entry, auth string, method string) (bool, bool, error) {
 	for ent := entry; ent != nil; ent = ent.Parent(true) {
 		auth := ent.Parameters().Child("auth").Child(auth)
@@ -378,4 +438,10 @@ func getPath(entry Entry) string {
 		}
 	}
 	return path.Clean("/" + p)
+}
+
+func Fingerprint(cert x509.Certificate) []byte {
+	h := sha256.New()
+	h.Write(cert.RawSubjectPublicKeyInfo)
+	return h.Sum(nil)
 }
