@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/mildred/SmartWeb/httpmux"
 	"github.com/mildred/SmartWeb/server"
+	"github.com/mildred/SmartWeb/rdf"
 	"log"
 	"net"
 	"path/filepath"
@@ -32,7 +33,14 @@ func main() {
 	var path = flag.String("path", "./web", "Path to serve")
 	flag.Parse()
 
-	srv := server.CreateFileServer(*path)
+	dataSet, err := rdf.CreateRedlandDataSet(filepath.Join(*path, "rdf"))
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	defer dataSet.Close()
+	srv := server.CreateFileServer(*path, dataSet)
 
 	s := &http.Server{
 		Addr:           *listen,

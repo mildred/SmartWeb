@@ -7,15 +7,23 @@ import (
 	"net/url"
 )
 
-type SmartServer struct {
-	Root Entry
-	auth Authenticator
+type DataSet interface {
+	AddQuad(context, subject, predicate, object interface{}) error
 }
 
-func CreateFileServer(path string) *SmartServer {
+var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
+
+type SmartServer struct {
+	Root    Entry
+	DataSet DataSet
+	auth    Authenticator
+}
+
+func CreateFileServer(path string, dataSet DataSet) *SmartServer {
 	return &SmartServer{
-		Root: CreateFSEntry(path),
-		auth: CreateAuthenticator(),
+		Root:    CreateFSEntry(path),
+		DataSet: dataSet,
+		auth:    CreateAuthenticator(),
 	}
 }
 
@@ -25,8 +33,13 @@ func handleError(res http.ResponseWriter, status int, err string) {
 	res.Write([]byte(err))
 }
 
-func (server SmartServer) getEntry(Url *url.URL) Entry {
-	entry := server.Root.Child(Url.Path)
+func (server SmartServer) getEntry(Host string, Url *url.URL) Entry {
+	if Host == "" {
+		Host = "host"
+	} else {
+		Host = Host + ".host"
+	}
+	entry := server.Root.Child(Host).Child(Url.Path)
 	meta_values := Url.Query()["meta"]
 	for _, meta := range meta_values {
 		entry = entry.Parameters().Child(meta)
@@ -117,12 +130,40 @@ func (server SmartServer) handleDELETE(entry Entry, res http.ResponseWriter, req
 }
 
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	entry := server.getEntry(req.URL)
+	entry := server.getEntry(req.Host, req.URL)
 
 	if !server.auth.Authenticate(entry, res, req) {
 		res.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	
+	_, has_rdf := req.URL.Query()["rdf"]
+	if has_rdf {
+		log.Printf("RDF")
+	}
+	
+	referrer, err := url.Parse(req.Referer())
+	if err == nil {
+		refUrl := req.URL.ResolveReference(&url.URL{
+			Scheme: "http", // Ignore https to avoid breaking links
+			Host: req.Host,
+		})
+
+		referrer = referrer.ResolveReference(refUrl)
+		var context url.URL = *referrer
+		if context.RawQuery == "" {
+			context.RawQuery = "rdf"
+		} else {
+			context.RawQuery = context.RawQuery + "&rdf"
+		}
+		err = server.DataSet.AddQuad(&context, refUrl, SmartWeb_hasReferer, referrer)
+		if err != nil {
+			log.Println(err)
+		}
+		// Add the referrer in storage
+		// server.DataSet.AddContext(context, referrer, "seems-to-refers:to", refUrl)
+	}
+	
 
 	if req.Method == "GET" || req.Method == "HEAD" {
 		server.handleGET(entry, res, req)

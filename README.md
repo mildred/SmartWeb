@@ -26,14 +26,10 @@ certificate yourself, use the following command line:
 Client certificates are accepted. To generate a self signed client certificate,
 use:
 
-    openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj '/CN=CommonName'
-    openssl pkcs12 -export -in cert.pem -inkey key.pem -out client-cert.p12 -nodes
+    openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes
+    openssl pkcs12 -export -nodes -in cert.pem -inkey key.pem -out client-cert.p12
 
 Then import the `client-cert.p12` into Firefox
-
-(see [X520](http://www.itu.int/rec/T-REC-X.520) and
-[RFC 5280 section 4.1.2.4](https://tools.ietf.org/html/rfc5280#section-4.1.2.4)
-for the subject string)
 
 Entries URI
 -----------
@@ -102,11 +98,19 @@ semantic.
 
 ### Future Ideas ###
 
-* `SEARCH` method to perform a full text search. It will search the child
-  entries for the required pattern. If there is no clear semantic given for the
-  FTS syntax, provide in a header the link to the syntax definition (accessible
-  via `HEAD`) so a script can tell if it knows the syntax, and the human can
-  understand it.
+* Referer parsing:
+
+    - When a query to a resource has a referer field, and if that referer was not
+	  processed within a configurable time frame
+	- The referer is contacted with a SPARQL query SELECT ?subj, ?pred WHERE { ?subj ?pred <our-uri> }
+	- If the request was successfull, store the results in a graph with the URI of
+	  the referrer, containing: ?subj ?pred <our-uri>
+	- To validate the backlink, the administrator has to add this link to the default graph of the dataset
+
+* Full text search: `POST` (or `QUERY`, or `SEARCH`) with `Content-Type: application/sparql-query`
+  [REC-sparql11-protocol](http://www.w3.org/TR/2013/REC-sparql11-protocol-20130321/)
+  using the full text search namespace `http://www.tracker-project.org/ontologies/fts#`.
+  Will search in the entry and the sub-entries for full text match.
 
 * `EXPORTARCHIVE` exports a tree in an archive for backup
 
@@ -117,6 +121,35 @@ semantic.
 * `REQUEST-LINK` request a link to be made from the resource to another given as
   argument. This could be used to advertise backlinks. Perhaps this is a
   candidate for `POST`.
+
+* `POST` with `Content-Type: text/turtle; charset="utf-8"` to insert backlinks
+  in documents. Reply with `202 Accepted` if the request is pending moderation,
+  or `204 No Content` if the request was successfull.
+
+
+Free Comments about RDF
+-----------------------
+
+<blog-post.html> contains {
+  <blog-post.html> a            html:Document ;
+                   described:in <blog-post.html?rdf>
+}
+
+in blog-post.html we have: <link rel="described:in" src="store.rdf"/>
+
+<blog-post.html?rdf> contains {
+  <comment.html> a html:Document, text:comment ; talk:about <blog-post.html>
+  <comment.html> a html:Document, text:comment ; talk:about <blog-post.html>
+  <comment.html> a html:Document, text:comment ; talk:about <blog-post.html>
+  <other-store.rdf> claims { <unvalidated-comment.html> talk:about <blog-post.html> }
+  <unvalidated-comment2.html> claims { <unvalidated-comment2.html> talk:about <blog-post.html> }
+  <referrer.html> seems-to-refers:to <blog-post.html> // unchecked referrer, removed once checked
+}
+
+in unvalidated-comment.html we have: <link rel="described:in" src="other-store.rdf"/>
+in other-store.n3 we have: <unvalidated-comment.html> talk:about <blog-post.html>
+
+in unvalidated-comment2.html we have: <link rel="talk:about" src="blog-post.html"/>
 
 
 Authentication
