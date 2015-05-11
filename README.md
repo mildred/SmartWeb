@@ -152,6 +152,19 @@ in other-store.n3 we have: <unvalidated-comment.html> talk:about <blog-post.html
 in unvalidated-comment2.html we have: <link rel="talk:about" src="blog-post.html"/>
 
 
+About Index Pages
+-----------------
+
+Have a HTML element that does templating based on RDF:
+
+  <template rdf-source="?rdf&query=<SPARQL QUERY>">
+    <iframe src="?href"></iframe>
+  </template>
+
+See xul:template reference: http://www-archive.mozilla.org/rdf/doc/xul-template-reference.html
+See promising research in: http://referaat.cs.utwente.nl/conference/10/paper/6949/rdf-integration-in-html-5-web-pages.pdf
+Or use web components http://webcomponents.org/articles/introduction-to-shadow-dom/
+
 Authentication
 --------------
 
