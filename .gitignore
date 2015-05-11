@@ -4,4 +4,12 @@
 /metadata
 /smartweb
 /cmd/smartweb/smartweb
+/ckeditor-build/
 *~
+/edit.appcache
+/web/rdf/redland.sqlite
+/web/localhost:8000.host.dir/ckeditor.dir
+/web/localhost:8000.host.dir/edit.html.*
+/web/localhost:8000.host.dir/edit.appcache.*
+/ckbuilder.jar
+/ckbuilder.*.jar

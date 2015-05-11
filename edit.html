@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html manifest="edit.appcache">
+<head><meta charset="utf-8">
+	<title>HTML Editor</title>
+	<script src="ckeditor/ckeditor.js"></script>
+</head>
+<body>
+<div id="editable">
+  No Page specified
+</div>
+<script>
+    var editor = CKEDITOR.replace('editable', {
+        autosave_SaveKey: "tag:mildred.fr,2015:WebEdit:AutoSave:Key",
+        autosave_delay: 5,
+        autosave_NotOlderThen: 1440 * 365 * 100, // as long as possible: 100 years
+        allowedContent: true,
+        dialog_noConfirmCancel: true,
+        fullPage: true,
+        removePlugins: "about,templates,selectall,forms,specialchar,flash,iframe,save,allowsave,openurl,autosave",
+        extraPlugins: "saveurl",
+        autosave_open: window.location.hash.substr(1),
+        toolbar: [
+            { name: 'document', groups: [ 'mode', 'document', 'doctools' ],
+                items: [ 'OpenUrl', 'SaveUrl', 'SaveUrlAs', '-', 'Preview', 'Print' ] },
+            { name: 'tools',
+                items: [ 'Source', 'ShowBlocks', 'DocProps' ] },
+            { name: 'clipboard', groups: [ 'clipboard' ],
+                items: [ 'Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord'] },
+            { name: 'clipboard', groups: [ 'undo' ],
+                items: [ 'Undo', 'Redo' ] },
+            { name: 'editing', groups: [ 'find', 'spellchecker' ],
+                items: [ 'Find', 'Replace', '-', 'Scayt' ] },
+            { name: 'forms',
+                items: [ ] },
+            { name: 'paragraph', groups: [ 'bidi' ],
+                items: [ 'BidiLtr', 'BidiRtl', 'Language' ] },
+            '/',
+            { name: 'styles',
+                items: [ 'Styles', 'Format', 'Font', 'FontSize' ] },
+            { name: 'basicstyles', groups: [ 'basicstyles', 'cleanup' ],
+                items: [ 'RemoveFormat', '-',
+                         'Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript' ] },
+            { name: 'colors',
+                items: [ 'TextColor', 'BGColor' ] },
+            { name: 'paragraph', groups: [ 'list', 'indent', 'blocks', 'align' ],
+                items: [ 'NumberedList', 'BulletedList', '-',
+                         'Outdent', 'Indent', '-', 'Blockquote', 'CreateDiv', '-',
+                         'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock' ] },
+            { name: 'links',
+                items: [ 'Link', 'Unlink', 'Anchor' ] },
+            { name: 'insert',
+                items: [ 'Image', 'Table', 'HorizontalRule', 'Smiley', 'PageBreak' ] },
+        ]
+    });
+    editor.on('instanceReady', function (ev) {
+        this.execCommand('maximize');
+    });
+    editor.on('documentURLChange', function(ev){
+      var url = ev.data;
+      var newHash = "#" + url;
+      if(window.location.hash !== newHash) window.location.hash = newHash;
+      document.title = url;
+    });
+    window.addEventListener("hashchange", function(){
+      console.log("hash change " + window.location.hash);
+      if(!editor.execCommand('openUrl', {url: window.location.hash.substr(1)})) {
+        window.location.hash = "#" + editor.documentURL;
+      }
+    }, false);
+</script></body>
+</html>

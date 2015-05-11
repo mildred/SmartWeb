@@ -47,6 +47,7 @@ func CreateRedlandDataSet(directory string) (*RedlandDataSet, error) {
 		}
 		if _, e := os.Stat(sqlite_file); e != nil {
 			storage_opts.PutStrings("new", "yes")
+			log.Printf("Create RDF storage: %s\n", sqlite_file);
 		}
 	} else {
 		err := os.MkdirAll(directory, 0777)
@@ -56,6 +57,7 @@ func CreateRedlandDataSet(directory string) (*RedlandDataSet, error) {
 			return nil, err
 		}
 		storage_opts.PutStrings("new", "yes")
+		log.Printf("Create RDF storage: %s\n", sqlite_file);
 	}
 
 	/*

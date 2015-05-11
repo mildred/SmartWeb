@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/mildred/SmartWeb/sparql"
 	"io"
+	"strings"
 	"log"
 	"net/http"
 	"net/url"
@@ -58,15 +59,34 @@ func (server SmartServer) handleGET(entry Entry, res http.ResponseWriter, req *h
 		return
 	}
 	defer f.Close()
+	
+	var has_content_type bool = false
 
 	if headers, err := meta.Child("headers").Children(); err == nil {
 		for _, header := range headers {
 			if data, err := header.Read(); err != nil {
 				log.Println(err)
 			} else {
+				if string(header.Name()) == "Content-Type" {
+					has_content_type = true
+				}
 				res.Header().Set(string(header.Name()), string(data))
 			}
 		}
+	}
+	
+	if !has_content_type {
+
+		var data [512]byte
+		io.ReadFull(f, data[:]);
+		f.Seek(0, 0)
+		content_type := http.DetectContentType(data[:])
+		
+		if strings.HasPrefix(content_type, "text/plain") && strings.HasSuffix(req.URL.Path, ".css") {
+			content_type = strings.Replace(content_type, "text/plain", "text/css", 1);
+		}
+		
+		res.Header().Set("Content-Type", content_type)
 	}
 
 	res.WriteHeader(http.StatusOK)

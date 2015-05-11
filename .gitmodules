@@ -1,0 +1,6 @@
+[submodule "ckeditor"]
+	path = ckeditor
+	url = https://github.com/ckeditor/ckeditor-dev
+[submodule "lz-string"]
+	path = lz-string
+	url = https://github.com/pieroxy/lz-string.git
