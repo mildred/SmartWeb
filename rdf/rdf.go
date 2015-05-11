@@ -1,10 +1,13 @@
 package rdf
 
 import (
-	"github.com/mildred/golibrdf"
-	"os"
-	"net/url"
+	"errors"
 	"fmt"
+	"github.com/mildred/golibrdf"
+	"log"
+	"net/url"
+	"os"
+	"path/filepath"
 )
 
 type RedlandDataSet struct {
@@ -13,57 +16,83 @@ type RedlandDataSet struct {
 	Model   *golibrdf.Model
 }
 
+func logMessage(message string) int {
+	log.Println(message)
+	return 1
+}
+
 func CreateRedlandDataSet(directory string) (*RedlandDataSet, error) {
 	w := golibrdf.NewWorld()
 	err := w.Open()
 	if err != nil {
 		return nil, err
 	}
-	
-	storage_opts, err := golibrdf.NewHash(w);
+
+	//w.SetError(logMessage)
+	//w.SetWarning(logMessage)
+
+	storage_opts, err := golibrdf.NewHash(w)
 	if err != nil {
-		w.Close();
+		w.Close()
 		return nil, err
 	}
-	
+
+	sqlite_file := filepath.Join(directory, "redland.sqlite")
+
 	if st, e := os.Stat(directory); e == nil {
 		if !st.IsDir() {
-			storage_opts.Free();
-			w.Close();
-			return nil, fmt.Errorf("%s: Must be a directory", directory);
+			storage_opts.Free()
+			w.Close()
+			return nil, fmt.Errorf("%s: Must be a directory", directory)
+		}
+		if _, e := os.Stat(sqlite_file); e != nil {
+			storage_opts.PutStrings("new", "yes")
 		}
 	} else {
 		err := os.MkdirAll(directory, 0777)
 		if err != nil {
-			storage_opts.Free();
-			w.Close();
+			storage_opts.Free()
+			w.Close()
 			return nil, err
 		}
-		storage_opts.PutStrings("new", "yes");
+		storage_opts.PutStrings("new", "yes")
 	}
-	
-	storage_opts.PutStrings("hash-type", "bdb");
-	storage_opts.PutStrings("contexts", "yes");
-	storage_opts.PutStrings("dir", directory);
-	
-	storage, err := golibrdf.NewStorageWithOptions(w, "hashes", directory, storage_opts)
+
+	/*
+		//storage_opts.PutStrings("hash-type", "memory")
+		storage_opts.PutStrings("hash-type", "bdb")
+		storage_opts.PutStrings("contexts", "yes")
+		//storage_opts.PutStrings("dir", ".")
+		storage_opts.PutStrings("dir", directory)
+
+		storage, err := golibrdf.NewStorageWithOptions(w, "hashes", "rdf", storage_opts)
+		//storage, err := golibrdf.NewStorage(w, "hashes", "db1", "hash-type='memory'")
+		storage_opts.Free()
+		if err != nil {
+			storage_opts.Free()
+			w.Close()
+			return nil, err
+		}
+	*/
+
+	storage, err := golibrdf.NewStorageWithOptions(w, "sqlite", sqlite_file, storage_opts)
 	storage_opts.Free()
 	if err != nil {
-		storage_opts.Free();
-		w.Close();
+		storage_opts.Free()
+		w.Close()
 		return nil, err
 	}
-	
+
 	model, err := golibrdf.NewModel(w, storage, "")
 	if err != nil {
-		storage.Free();
-		w.Close();
+		storage.Free()
+		w.Close()
 	}
 
 	return &RedlandDataSet{
-		World: w,
+		World:   w,
 		Storage: storage,
-		Model: model,
+		Model:   model,
 	}, nil
 }
 
@@ -103,7 +132,7 @@ func (ds *RedlandDataSet) AddQuad(context, subject, predicate, object interface{
 		nContext.Free()
 		return err
 	}
-	
+
 	statement, err := golibrdf.NewStatementFromNodes(ds.World, nSubject, nPredicate, nObject)
 	if err != nil {
 		nObject.Free()
@@ -117,14 +146,63 @@ func (ds *RedlandDataSet) AddQuad(context, subject, predicate, object interface{
 	if err != nil {
 		statement.Free()
 		nContext.Free()
-		return err;
+		return err
 	}
-	
+
 	return nil
 }
 
 func (ds *RedlandDataSet) Close() {
 	ds.Model.Free()
 	ds.Storage.Free()
-	ds.World.Close();
+	ds.World.Close()
+}
+
+func (ds *RedlandDataSet) QueryGraph(query, content_type string) ([]byte, error) {
+	q, err := golibrdf.NewQuery(ds.World, "sparql", query)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	res, err := ds.Model.Execute(&q)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer res.Free()
+
+	stream := res.AsStream()
+	if stream == nil {
+		return []byte{}, errors.New("Result is probably not a graph")
+	}
+	defer stream.Free()
+
+	storage, err := golibrdf.NewStorage(ds.World, "hashes", "results", "hash-type='memory'")
+	if err != nil {
+		return []byte{}, err
+	}
+	defer storage.Free()
+
+	model, err := golibrdf.NewModel(ds.World, storage, "")
+	if err != nil {
+		return []byte{}, err
+	}
+	defer model.Free()
+
+	err = model.AddStatements(stream)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	serializer, err := golibrdf.NewSerializer(ds.World, "", content_type, nil)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer serializer.Free()
+
+	resultString, err := serializer.SerializeModelToString(model, nil)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return []byte(resultString), nil
 }

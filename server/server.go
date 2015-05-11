@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/mildred/SmartWeb/sparql"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 type DataSet interface {
 	AddQuad(context, subject, predicate, object interface{}) error
+	QueryGraph(query, content_type string) ([]byte, error)
 }
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
@@ -136,34 +138,60 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		res.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	
+
+	curUrl := (&url.URL{
+		Scheme: "http", // Ignore https to avoid breaking links
+		Host:   req.Host,
+	}).ResolveReference(req.URL)
+
 	_, has_rdf := req.URL.Query()["rdf"]
 	if has_rdf {
-		log.Printf("RDF")
+		log.Println("RDF " + req.Method + " " + curUrl.String())
+		if req.Method == "GET" {
+			//server.DataSet
+			var graphURL url.URL = *curUrl
+			/*if graphURL.RawQuery == "rdf" {
+				graphURL.RawQuery = ""
+			} else {
+				graphURL.RawQuery = strings.Replace("&"+graphURL.RawQuery+"&", "&rdf&", "&", -1)
+				graphURL.RawQuery = graphURL.RawQuery[1 : len(graphURL.RawQuery)-1]
+			}*/
+			graph := sparql.IRILiteral(graphURL.String())
+			q := `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ` + graph + ` { ?s ?p ?o } . }`
+			log.Printf("Query %v\n", q)
+			data, err := server.DataSet.QueryGraph(q, "text/turtle")
+			res.Header().Set("Content-Type", "text/turtle")
+			if err != nil {
+				res.WriteHeader(http.StatusInternalServerError)
+				res.Write([]byte(err.Error()))
+			} else {
+				res.WriteHeader(http.StatusOK)
+				res.Write(data)
+			}
+		} else {
+			res.WriteHeader(http.StatusMethodNotAllowed)
+		}
+		return
 	}
-	
+
+	log.Println(req.Method + " " + curUrl.String())
+
 	referrer, err := url.Parse(req.Referer())
 	if err == nil {
-		refUrl := req.URL.ResolveReference(&url.URL{
-			Scheme: "http", // Ignore https to avoid breaking links
-			Host: req.Host,
-		})
-
-		referrer = referrer.ResolveReference(refUrl)
-		var context url.URL = *referrer
+		referrer = curUrl.ResolveReference(referrer)
+		var context url.URL = *curUrl
 		if context.RawQuery == "" {
 			context.RawQuery = "rdf"
 		} else {
 			context.RawQuery = context.RawQuery + "&rdf"
 		}
-		err = server.DataSet.AddQuad(&context, refUrl, SmartWeb_hasReferer, referrer)
+		// Add the referrer in storage
+		log.Printf("Add quad: %v %v %v %v\n", &context, curUrl, SmartWeb_hasReferer, referrer)
+		err = server.DataSet.AddQuad(&context, curUrl, SmartWeb_hasReferer, referrer)
 		if err != nil {
 			log.Println(err)
 		}
-		// Add the referrer in storage
-		// server.DataSet.AddContext(context, referrer, "seems-to-refers:to", refUrl)
 	}
-	
 
 	if req.Method == "GET" || req.Method == "HEAD" {
 		server.handleGET(entry, res, req)
