@@ -54,6 +54,9 @@ func main() {
 	} else {
 		sparql.update = *sparql_update_url
 	}
+	
+	log.Printf("SPARQL Query endpoint %s\n", sparql.query)
+	log.Printf("SPARQL Update endpoint %s\n", sparql.update)
 
 	srv := server2.CreateFileServer(*path, sparql.query, sparql.update)
 

@@ -97,7 +97,7 @@ func (c *Client) Select(query string) (*Response, error) {
 		defer resp.Body.Close();
 	}
 	
-	if resp.StatusCode < 200 && resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.New(resp.Status)
 	}
 	
@@ -131,7 +131,7 @@ func (c *Client) Update(query string) (*Response, error) {
 		defer resp.Body.Close();
 	}
 	
-	if resp.StatusCode < 200 && resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.New(resp.Status)
 	}
 	

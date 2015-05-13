@@ -5,7 +5,16 @@ import (
 	"regexp"
 	"log"
 	"net/http"
+	"io"
+	"io/ioutil"
+	"os"
 	"net/url"
+	"crypto/sha1"
+	"encoding/hex"
+	"strings"
+	"fmt"
+	"path/filepath"
+	"strconv"
 )
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
@@ -46,28 +55,69 @@ func (server SmartServer) handleGET(rdfUrl, u *url.URL, res http.ResponseWriter,
 	}
 	
 	if len(result.Results.Bindings) < 1 {
-		handleError(res, 400, "")
+		handleError(res, 404, "")
 		return
 	}
 
 	binding := result.Results.Bindings[0]
 	hash := binding["hash"]
 	content_type := binding["type"]
+	
+	f, err := os.Open(filepath.Join(server.Root, hash.Value))
+	if err != nil {
+		handleError(res, 404, err.Error())
+		return
+	}
 
 	res.Header().Set("Content-Type", content_type.Value)
 	res.Header().Set("Etag", hash.Value)
 	res.WriteHeader(http.StatusOK)
-	res.Write([]byte{})
-	
-	/*
+
 	if req.Method != "HEAD" {
 		io.Copy(res, f)
 	}
-	*/
 }
 
 func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
-	_, err := server.dataSet.Update(sparql.MakeQuery(`
+	
+	f, err := ioutil.TempFile(server.Root, "temp:")
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	defer f.Close();
+	
+	_, err = io.Copy(f, req.Body);
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	_, err = f.Seek(0, 0)
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	hash := sha1.New()
+	_, err = io.Copy(hash, f)
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	digest := hex.EncodeToString(hash.Sum([]byte{}))
+	uri := fmt.Sprintf("sha1:%s", strings.ToLower(digest))
+	
+	res.Header().Set("Location", uri)
+	
+	err = os.Rename(f.Name(), filepath.Join(server.Root, uri))
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+
+	_, err = server.dataSet.Update(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		
 		CLEAR SILENT GRAPH %1u;
@@ -78,7 +128,7 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 					sw:contentType %4s .
 			}
 		}
-	`, rdfUrl, u, "hash:unknown", req.Header.Get("Content-Type")))
+	`, rdfUrl, u, uri, req.Header.Get("Content-Type")))
 	
 	if err != nil {
 		handleError(res, 500, err.Error())
@@ -86,60 +136,52 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 	}
 
 	res.WriteHeader(http.StatusCreated)
-	/*
-	meta := entry.Parameters()
-	headers := meta.Child("headers/")
-	exists := entry.Exists()
+}
 
-	err := headers.DeleteAll()
+func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
+	result, err := server.dataSet.Select(sparql.MakeQuery(`
+		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
+		SELECT ?hash
+		WHERE { %1u sw:hash ?hash . }
+	`, u))
 	if err != nil {
-		handleError(res, http.StatusInternalServerError, err.Error())
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	if len(result.Results.Bindings) < 1 {
+		handleError(res, 404, "Not Found")
 		return
 	}
 
-	if contentType := req.Header.Get("Content-Type"); contentType != "" {
-		err = headers.Child("Content-Type").Write([]byte(contentType))
+	hash := result.Results.Bindings[0]["hash"].Value
+	_, err = server.dataSet.Update(sparql.MakeQuery(`
+		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
+		DROP SILENT GRAPH %1u
+	`, rdfUrl))
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	result, err = server.dataSet.Select(sparql.MakeQuery(`
+		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
+		SELECT (count(?subj) AS ?count)
+		WHERE { ?subj sw:hash %1u . }
+	`, hash))
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+	
+	count, err := strconv.ParseInt(result.Results.Bindings[0]["count"].Value, 10, 0)
+	if err == nil && count == 0 {
+		err := os.Remove(filepath.Join(server.Root, hash))
 		if err != nil {
-			handleError(res, http.StatusInternalServerError, err.Error())
-			return
+			log.Println(err)
 		}
 	}
-
-	f, err := entry.Create()
-	if err != nil {
-		handleError(res, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer f.Close()
-
-	_, err = io.Copy(f, req.Body)
-	if err != nil {
-		handleError(res, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	err = f.Commit()
-	if err != nil {
-		handleError(res, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if exists {
-		res.WriteHeader(http.StatusNoContent)
-	} else {
-		res.WriteHeader(http.StatusCreated)
-	}*/
 }
-/*
-func (server SmartServer) handleDELETE(entry Entry, res http.ResponseWriter, req *http.Request) {
-	err := entry.DeleteAll()
-	if err != nil {
-		handleError(res, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	res.WriteHeader(http.StatusNoContent)
-}*/
 
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	curUrl := (&url.URL{
@@ -170,8 +212,8 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		server.handleGET(&context, curUrl, res, req)
 	} else if req.Method == "PUT" {
 		server.handlePUT(&context, curUrl, res, req)
-	//} else if req.Method == "DELETE" {
-	//	server.handleDELETE(entry, res, req)
+	} else if req.Method == "DELETE" {
+		server.handleDELETE(&context, curUrl, res, req)
 	} else {
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
