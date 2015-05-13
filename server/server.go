@@ -3,15 +3,18 @@ package server
 import (
 	"github.com/mildred/SmartWeb/sparql"
 	"io"
+	"io/ioutil"
 	"strings"
+	"regexp"
 	"log"
 	"net/http"
 	"net/url"
+	"mime"
 )
 
 type DataSet interface {
 	AddQuad(context, subject, predicate, object interface{}) error
-	QueryGraph(query, content_type string) ([]byte, error)
+	QueryGraph(query, baseUri string, accept_types []string) (data []byte, content_type string, err error, status int)
 }
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
@@ -151,6 +154,42 @@ func (server SmartServer) handleDELETE(entry Entry, res http.ResponseWriter, req
 	res.WriteHeader(http.StatusNoContent)
 }
 
+func (server SmartServer) serveRDFGraph(res http.ResponseWriter, req *http.Request, curUrl *url.URL) {
+	log.Printf("RDF GET <%s>\n", curUrl.String())
+	var graphURL url.URL = *curUrl
+	graph := sparql.IRILiteral(graphURL.String())
+	q := `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ` + graph + ` { ?s ?p ?o } . }`
+	data, content_type, err, status := server.DataSet.QueryGraph(q, curUrl.String(), splitHeader(req.Header.Get("Accept")))
+	if err != nil {
+		res.Header().Set("Content-Type", "text/plain")
+		res.WriteHeader(status)
+		res.Write([]byte(err.Error()))
+	} else {
+		res.Header().Set("Content-Type", content_type)
+		res.Header().Add("Vary", "Accept")
+		res.WriteHeader(status)
+		res.Write(data)
+	}
+}
+
+func (server SmartServer) serveRDFQuery(res http.ResponseWriter, req *http.Request, curUrl *url.URL, query string) {
+	log.Printf("RDF QUERY <%s>: %s\n", curUrl.String(), query)
+	data, content_type, err, status := server.DataSet.QueryGraph(query, curUrl.String(), splitHeader(req.Header.Get("Accept")))
+	if err != nil {
+		res.Header().Set("Content-Type", "text/plain")
+		res.WriteHeader(status)
+		res.Write([]byte(err.Error()))
+	} else {
+		res.Header().Set("Content-Type", content_type)
+		res.Header().Add("Vary", "Accept")
+		res.WriteHeader(status)
+		res.Write(data)
+	}
+}
+
+var query_regexp1, _ = regexp.Compile("&query=[^&]*")
+var query_regexp2, _ = regexp.Compile("^query=[^&]*&")
+
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	entry := server.getEntry(req.Host, req.URL)
 
@@ -166,27 +205,38 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 
 	_, has_rdf := req.URL.Query()["rdf"]
 	if has_rdf {
-		log.Println("RDF " + req.Method + " " + curUrl.String())
 		if req.Method == "GET" {
-			//server.DataSet
-			var graphURL url.URL = *curUrl
-			/*if graphURL.RawQuery == "rdf" {
-				graphURL.RawQuery = ""
+			if query, has_query := req.URL.Query()["query"]; has_query && len(query) == 1 {
+				curUrl.RawQuery = query_regexp1.ReplaceAllString(curUrl.RawQuery, "")
+				curUrl.RawQuery = query_regexp2.ReplaceAllString(curUrl.RawQuery, "")
+				server.serveRDFQuery(res, req, curUrl, query[0])
 			} else {
-				graphURL.RawQuery = strings.Replace("&"+graphURL.RawQuery+"&", "&rdf&", "&", -1)
-				graphURL.RawQuery = graphURL.RawQuery[1 : len(graphURL.RawQuery)-1]
-			}*/
-			graph := sparql.IRILiteral(graphURL.String())
-			q := `CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ` + graph + ` { ?s ?p ?o } . }`
-			log.Printf("Query %v\n", q)
-			data, err := server.DataSet.QueryGraph(q, "text/turtle")
-			res.Header().Set("Content-Type", "text/turtle")
+				server.serveRDFGraph(res, req, curUrl)
+			}
+		} else if req.Method == "POST" {
+			content_type, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 			if err != nil {
-				res.WriteHeader(http.StatusInternalServerError)
+				res.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				res.WriteHeader(http.StatusBadRequest)
 				res.Write([]byte(err.Error()))
+			} else if content_type == "application/x-www-form-urlencoded" {
+				err = req.ParseForm()
+				if err != nil {
+					res.WriteHeader(http.StatusBadRequest)
+					res.Write([]byte(err.Error()))
+				} else if query, has_query := req.Form["query"]; has_query && len(query) == 1 {
+					server.serveRDFQuery(res, req, curUrl, query[0])
+				}
+			} else if content_type == "application/sparql-query" {
+				query, err := ioutil.ReadAll(req.Body)
+				if err != nil {
+					res.WriteHeader(http.StatusInternalServerError)
+					res.Write([]byte(err.Error()))
+				} else {
+					server.serveRDFQuery(res, req, curUrl, string(query))
+				}
 			} else {
-				res.WriteHeader(http.StatusOK)
-				res.Write(data)
+				res.WriteHeader(http.StatusUnsupportedMediaType)
 			}
 		} else {
 			res.WriteHeader(http.StatusMethodNotAllowed)
@@ -222,4 +272,30 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 	} else {
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+var header_value_regexp, _ = regexp.Compile(`([^,"]*|"([^"\\]*|\\.)*")*`)
+
+func splitHeader(header string) []string {
+	var result []string;
+	var start = 0
+	loc := header_value_regexp.FindStringIndex(header[start:])
+	for n := 0; n < 100 && loc != nil; n++ {
+		if start == 0 || header[start-1] == ',' {
+			result = append(result, header[start+loc[0]:start+loc[1]])
+		} else {
+			result[len(result)-1] = result[len(result)-1] + header[start+loc[0]:start+loc[1]]
+		}
+		if start+loc[1] < len(header) && header[start+loc[1]] == ',' {
+			start = start + loc[1] + 1
+		} else {
+			start = start + loc[1]
+		}
+		if start >= len(header) {
+			loc = nil
+		} else {
+			loc = header_value_regexp.FindStringIndex(header[start:])
+		}
+	}
+	return result
 }

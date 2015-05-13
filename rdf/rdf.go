@@ -160,51 +160,67 @@ func (ds *RedlandDataSet) Close() {
 	ds.World.Close()
 }
 
-func (ds *RedlandDataSet) QueryGraph(query, content_type string) ([]byte, error) {
-	q, err := golibrdf.NewQuery(ds.World, "sparql", query)
+func (ds *RedlandDataSet) QueryGraph(query, baseUri string, accept_types []string) ([]byte, string, error, int) {
+	var err error
+	q, err := golibrdf.NewQuery(ds.World, "sparql", query, baseUri)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, "", err, 400
 	}
+	defer q.Free()
 
-	res, err := ds.Model.Execute(&q)
+	res, err := ds.Model.Execute(q)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, "", err, 400
 	}
 	defer res.Free()
+	
+	if res.IsGraph() {
+		content_type := "text/turtle";
+		
+		stream := res.AsStream()
+		if stream == nil {
+			return []byte{}, "", errors.New("Result is probably not a graph"), 500
+		}
+		defer stream.Free()
+	
+		storage, err := golibrdf.NewStorage(ds.World, "hashes", "results", "hash-type='memory'")
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+		defer storage.Free()
+	
+		model, err := golibrdf.NewModel(ds.World, storage, "")
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+		defer model.Free()
+	
+		err = model.AddStatements(stream)
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+	
+		serializer, err := golibrdf.NewSerializer(ds.World, "", content_type, nil)
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+		defer serializer.Free()
+	
+		resultString, err := serializer.SerializeModelToString(model, nil)
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+	
+		return []byte(resultString), content_type, nil, 200
+		
+	} else {
+		content_type := "text/turtle";
 
-	stream := res.AsStream()
-	if stream == nil {
-		return []byte{}, errors.New("Result is probably not a graph")
+		res_string, err := res.ToString2("", content_type, "", "");
+		if err != nil {
+			return []byte{}, "", err, 500
+		}
+	
+		return []byte(res_string), content_type, err, 200
 	}
-	defer stream.Free()
-
-	storage, err := golibrdf.NewStorage(ds.World, "hashes", "results", "hash-type='memory'")
-	if err != nil {
-		return []byte{}, err
-	}
-	defer storage.Free()
-
-	model, err := golibrdf.NewModel(ds.World, storage, "")
-	if err != nil {
-		return []byte{}, err
-	}
-	defer model.Free()
-
-	err = model.AddStatements(stream)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	serializer, err := golibrdf.NewSerializer(ds.World, "", content_type, nil)
-	if err != nil {
-		return []byte{}, err
-	}
-	defer serializer.Free()
-
-	resultString, err := serializer.SerializeModelToString(model, nil)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return []byte(resultString), nil
 }
