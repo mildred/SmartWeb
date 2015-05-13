@@ -2,7 +2,58 @@ package sparql
 
 import (
 	"strings"
+	"fmt"
+	"net/url"
 )
+
+func Literal(o interface{}) (string, error) {
+	if u, ok := o.(*url.URL); ok {
+		return IRILiteral(u.String()), nil
+	} else if s, ok := o.(string); ok {
+		return StringLiteral(s), nil
+	} else if b, ok := o.(bool); ok {
+		return BoolLiteral(b), nil
+	} else if i, ok := o.(int); ok {
+		return IntLiteral(i), nil
+	} else if f, ok := o.(float32); ok {
+		return Float32Literal(f), nil
+	} else if f, ok := o.(float64); ok {
+		return Float64Literal(f), nil
+	} else {
+		return "", fmt.Errorf("Could not make a SPARQL literal from %#v", o)
+	}
+}
+
+// STRING_LITERAL2 ::= '"' ( ([^#x22#x5C#xA#xD]) | ECHAR )* '"'
+// ECHAR           ::= '\' [tbnrf\"']
+func StringLiteral(s string) string {
+	s = strings.Replace(s, "\\", "\\\\", -1)
+	s = strings.Replace(s, "\"", "\\\"", -1)
+	s = strings.Replace(s, "\r", "\\r",  -1)
+	s = strings.Replace(s, "\n", "\\n",  -1)
+	s = strings.Replace(s, "\t", "\\t",  -1)
+	return `"` + s + `"`
+}
+
+func BoolLiteral(b bool) string {
+	if b {
+		return "true"
+	} else {
+		return "false"
+	}
+}
+
+func IntLiteral(i int) string {
+	return fmt.Sprintf("%d", i)
+}
+
+func Float32Literal(f float32) string {
+	return fmt.Sprintf("%g", f)
+}
+
+func Float64Literal(f float64) string {
+	return fmt.Sprintf("%g", f)
+}
 
 // Replace illegal characters in SPARQL IRI and surround them with <...>
 // IRIREF ::= '<' ([^<>"{}|^`\]-[#x00-#x20])* '>'
