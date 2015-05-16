@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"crypto/x509"
 )
 
 type tcpKeepAliveListener struct {
@@ -57,22 +58,6 @@ func main() {
 	
 	log.Printf("SPARQL Query endpoint %s\n", sparql.query)
 	log.Printf("SPARQL Update endpoint %s\n", sparql.update)
-
-	srv := server2.CreateFileServer(*path, sparql.query, sparql.update)
-
-	s := &http.Server{
-		Addr:           *listen,
-		Handler:        srv,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
-
-	ln, err := net.Listen("tcp", s.Addr)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
 	
 	keypath := filepath.Join(*path, "key.pem");
 	certpath := filepath.Join(*path, "cert.pem");
@@ -108,7 +93,28 @@ func main() {
 			log.Fatalf("%s: %v\n", certpath, err2);
 		}
 	}
+	
+	x509Cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
+	srv := server2.CreateFileServer(*path, x509Cert, config.Certificates[0].PrivateKey, sparql.query, sparql.update)
+
+	s := &http.Server{
+		Addr:           *listen,
+		Handler:        srv,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	ln, err := net.Listen("tcp", s.Addr)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	listener := httpmux.NewListenerConfig(tcpKeepAliveListener{ln.(*net.TCPListener)}, config)
 

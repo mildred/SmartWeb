@@ -15,19 +15,25 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"crypto/x509"
+	"crypto"
 )
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
 
 type SmartServer struct {
-	Root     string
-	dataSet *sparql.Client
+	Root         string
+	Certificate *x509.Certificate
+	PrivateKey   crypto.PrivateKey
+	dataSet     *sparql.Client
 }
 
-func CreateFileServer(path string, query, update string) *SmartServer {
+func CreateFileServer(path string, Certificate *x509.Certificate, PrivateKey crypto.PrivateKey, query, update string) *SmartServer {
 	return &SmartServer{
-		Root:    path,
-		dataSet: sparql.NewClient(query, update),
+		Root:        path,
+		Certificate: Certificate,
+		PrivateKey:  PrivateKey,
+		dataSet:     sparql.NewClient(query, update),
 	}
 }
 
@@ -197,6 +203,11 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 	}
 
 	log.Println(req.Method + " " + curUrl.String())
+	
+	if req.URL.RawQuery == "keygen" {
+		server.handleKeygen(res, req)
+		return
+	}
 
 	referrer, err := url.Parse(req.Referer())
 	if err == nil {
