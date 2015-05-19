@@ -40,3 +40,10 @@ install-ckeditor: edit.appcache saveurl/js/extensions.min.js
 	echo "text/cache-manifest" > web/localhost:8000.host.dir/edit.appcache.metadir/headers.dir/Content-Type.data
 	./smart-copy.sh ckeditor-build/ckeditor web/localhost:8000.host.dir/ckeditor.dir
 	./smart-copy.sh saveurl web/localhost:8000.host.dir/ckeditor.dir/plugins.dir/saveurl.dir
+
+install-edit:
+	mkdir -p edit
+	cp -R ckeditor-build/ckeditor edit
+	cp -R saveurl edit/ckeditor/plugins
+	cp edit.html edit
+	#cp edit.appcache edit

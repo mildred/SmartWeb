@@ -8,12 +8,12 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"encoding/hex"
 	"net/url"
 	"crypto/sha1"
-	"encoding/hex"
 	"strings"
-	"fmt"
 	"path/filepath"
+	"fmt"
 	"strconv"
 	"crypto/x509"
 	"crypto"
@@ -93,20 +93,8 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 	}
 	defer f.Close();
 	
-	_, err = io.Copy(f, req.Body);
-	if err != nil {
-		handleError(res, 500, err.Error())
-		return
-	}
-	
-	_, err = f.Seek(0, 0)
-	if err != nil {
-		handleError(res, 500, err.Error())
-		return
-	}
-	
 	hash := sha1.New()
-	_, err = io.Copy(hash, f)
+	_, err = io.Copy(f, io.TeeReader(req.Body, hash));
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
@@ -119,9 +107,31 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 	
 	err = os.Rename(f.Name(), filepath.Join(server.Root, uri))
 	if err != nil {
+		go os.Remove(f.Name())
 		handleError(res, 500, err.Error())
 		return
 	}
+	
+	var parentChain string
+	urls := urlParents(u)
+	for i := len(urls)-1; i > 0; i-- {
+		parentChain += sparql.MakeQuery(" %1u sw:parent %2u .", &urls[i-1], &urls[i])
+	}
+	
+	/*var parentUrl url.URL = *u
+	var parentChain string
+	for parentUrl.Path != "/" {
+		log.Println(parentUrl)
+		var childUrl url.URL = parentUrl
+		if parentUrl.Path[len(parentUrl.Path)-1] == '/' {
+			parentUrl.Path = parentUrl.Path[:len(parentUrl.Path)-1]
+		}
+		parentUrl.Path = filepath.Dir(parentUrl.Path)
+		if parentUrl.Path != "/" {
+			parentUrl.Path = parentUrl.Path + "/"
+		}
+		parentChain += sparql.MakeQuery(" %1u sw:parent %2u .", &childUrl, &parentUrl)
+	}*/
 
 	_, err = server.dataSet.Update(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
@@ -132,9 +142,10 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 				%2u
 					sw:hash        %3u ;
 					sw:contentType %4s .
+				%5q
 			}
 		}
-	`, rdfUrl, u, uri, req.Header.Get("Content-Type")))
+	`, rdfUrl, u, uri, req.Header.Get("Content-Type"), parentChain))
 	
 	if err != nil {
 		handleError(res, 500, err.Error())
@@ -142,6 +153,33 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 	}
 
 	res.WriteHeader(http.StatusCreated)
+}
+
+func urlParents(u *url.URL) []url.URL {
+	var parentUrl url.URL = *u
+	var parentChain []url.URL = []url.URL{ parentUrl }
+	if parentUrl.Fragment != "" {
+		parentUrl.Fragment = ""
+		parentChain = append(parentChain, parentUrl)
+	}
+	if parentUrl.RawQuery != "" {
+		parentUrl.RawQuery = ""
+		parentChain = append(parentChain, parentUrl)
+	}
+	for parentUrl.Path != "/" {
+		// Remove trailing / from URL
+		if parentUrl.Path[len(parentUrl.Path)-1] == '/' {
+			parentUrl.Path = parentUrl.Path[:len(parentUrl.Path)-1]
+		}
+		// Get dirname from URL
+		parentUrl.Path = filepath.Dir(parentUrl.Path)
+		// Add trailing / to directory
+		if parentUrl.Path != "/" {
+			parentUrl.Path = parentUrl.Path + "/"
+		}
+		parentChain = append(parentChain, parentUrl)
+	}
+	return parentChain
 }
 
 func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
@@ -208,16 +246,50 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		server.handleKeygen(res, req)
 		return
 	}
+	
+	auth := false
+	if req.TLS != nil {
+		for _, clientCert := range req.TLS.PeerCertificates {
+			var err error
+			userid := fmt.Sprintf("x509-certificate-fingerprint:sha256:%s", strings.ToLower(hex.EncodeToString(SHA256Fingerprint(*clientCert))))
+			auth, err = checkAuth(server.dataSet, curUrl, req.Method, userid)
+			if err != nil {
+				handleError(res, 500, err.Error())
+				return
+			}
+			if auth {
+				break
+			}
+		}
+	} else {
+		var err error
+		auth, err = checkAuth(server.dataSet, curUrl, req.Method, "tag:mildred.fr,2015-05:SmartWeb#Anonymous")
+		if err != nil {
+			handleError(res, 500, err.Error())
+			return
+		}
+	}
+	
+	if ! auth {
+		// RFC 6797: HTTP Strict Transport Security (HSTS)
+		res.Header().Set("Strict-Transport-Security", "max-age=1")
+		handleError(res, 403, "Unauthorized")
+		return
+	}
 
-	referrer, err := url.Parse(req.Referer())
-	if err == nil {
+	go func(){
+		referrer, err := url.Parse(req.Referer())
+		if err != nil {
+			return
+		}
 		referrer = curUrl.ResolveReference(referrer)
 		// Add the referrer in storage
 		err = server.dataSet.AddQuad(&context, curUrl, SmartWeb_hasReferer, referrer)
 		if err != nil {
 			log.Println(err)
 		}
-	}
+	}()
+	
 
 	if req.Method == "GET" || req.Method == "HEAD" {
 		server.handleGET(&context, curUrl, res, req)

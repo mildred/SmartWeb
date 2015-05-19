@@ -13,3 +13,5 @@
 /web/localhost:8000.host.dir/edit.appcache.*
 /ckbuilder.jar
 /ckbuilder.*.jar
+/web/sha1:*
+/edit/

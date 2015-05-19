@@ -39,21 +39,37 @@ func main() {
 	var path   = flag.String("path", "./web", "Path to store raw files")
 	var sparql_query_url  = flag.String("sparql-query-url", "", "URL to query the RDF DataStore")
 	var sparql_update_url = flag.String("sparql-update-url", "", "URL to update the RDF DataStore")
-	var rdf4store_port    = flag.Int("4s-port", 8080, "4store HTTP gateway port to autodetect SPARQL endpoints")
+	var sparql_url        = flag.String("sparql", "", "URL to query and update the RDF DataStore")
+	var rdf4store_port    = flag.Int("4s-port", -1, "4store HTTP gateway port to autodetect SPARQL endpoints")
+	var sesame_port       = flag.Int("sesame-port", -1, "OpenRDF Sesame HTTP gateway port to autodetect SPARQL endpoints")
+	var sesame_dsname     = flag.String("sesame-datastore", "smartweb", "OpenRDF Sesame datastore name to autodetect SPARQL endpoints")
 	flag.Parse()
 	
 	var sparql SparqlEndpoint
 
-	if *sparql_query_url == "" {
-		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/sparql/", *rdf4store_port)
-	} else {
+	if *sparql_query_url != "" {
 		sparql.query = *sparql_query_url
+	} else if *sparql_url != "" {
+		sparql.query = *sparql_url
+	} else if *rdf4store_port != -1 {
+		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/sparql/", *rdf4store_port)
+	} else if *sesame_port != -1 {
+		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/openrdf-sesame/repositories/%s", *sesame_port, *sesame_dsname)
 	}
 	
-	if *sparql_update_url == "" {
-		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/update/", *rdf4store_port)
-	} else {
+	if *sparql_update_url != "" {
 		sparql.update = *sparql_update_url
+	} else if *sparql_url != "" {
+		sparql.update = *sparql_url
+	} else if *rdf4store_port != -1 {
+		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/update/", *rdf4store_port)
+	} else if *sesame_port != -1 {
+		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/openrdf-sesame/repositories/%s/statements", *sesame_port, *sesame_dsname)
+	}
+	
+	if sparql.query == "" {
+		log.Println("You must specify a SPARQL RDF backend")
+		return;
 	}
 	
 	log.Printf("SPARQL Query endpoint %s\n", sparql.query)
