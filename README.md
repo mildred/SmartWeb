@@ -1,3 +1,10 @@
+SmartWeb2
+=========
+
+    java -Dinfo.aduna.platform.appdata.basedir=/home/mildred/openrdf-sesame-store -jar ~/Inbox/winstone-boot-1.7.0.jar --webappsDir=Inbox/openrdf-sesame-2.8.3/war --port=8080
+    
+    go build ./cmd/smartweb2 && ./smartweb2 --sesame-port 8080
+
 SmartWeb
 ========
 

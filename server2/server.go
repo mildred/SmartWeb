@@ -1,30 +1,30 @@
 package server2
 
 import (
+	"crypto"
+	"crypto/sha1"
+	"crypto/x509"
+	"encoding/hex"
+	"fmt"
 	"github.com/mildred/SmartWeb/sparql"
-	"regexp"
-	"log"
-	"net/http"
 	"io"
 	"io/ioutil"
-	"os"
-	"encoding/hex"
+	"log"
+	"net/http"
 	"net/url"
-	"crypto/sha1"
-	"strings"
+	"os"
 	"path/filepath"
-	"fmt"
+	"regexp"
 	"strconv"
-	"crypto/x509"
-	"crypto"
+	"strings"
 )
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
 
 type SmartServer struct {
-	Root         string
+	Root        string
 	Certificate *x509.Certificate
-	PrivateKey   crypto.PrivateKey
+	PrivateKey  crypto.PrivateKey
 	dataSet     *sparql.Client
 }
 
@@ -43,7 +43,7 @@ func handleError(res http.ResponseWriter, status int, err string) {
 	res.Write([]byte(err))
 }
 
-func (server SmartServer) handleGET(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
+func (server SmartServer) handleGET(u *url.URL, res http.ResponseWriter, req *http.Request) {
 	result, err := server.dataSet.Select(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		SELECT ?hash ?type
@@ -54,12 +54,12 @@ func (server SmartServer) handleGET(rdfUrl, u *url.URL, res http.ResponseWriter,
 		}
 		LIMIT 1
 	`, u))
-	
+
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	if len(result.Results.Bindings) < 1 {
 		handleError(res, 404, "")
 		return
@@ -68,7 +68,7 @@ func (server SmartServer) handleGET(rdfUrl, u *url.URL, res http.ResponseWriter,
 	binding := result.Results.Bindings[0]
 	hash := binding["hash"]
 	content_type := binding["type"]
-	
+
 	f, err := os.Open(filepath.Join(server.Root, hash.Value))
 	if err != nil {
 		handleError(res, 404, err.Error())
@@ -84,54 +84,39 @@ func (server SmartServer) handleGET(rdfUrl, u *url.URL, res http.ResponseWriter,
 	}
 }
 
-func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
-	
+func (server SmartServer) handlePUT(u *url.URL, res http.ResponseWriter, req *http.Request) {
+
 	f, err := ioutil.TempFile(server.Root, "temp:")
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
 	}
-	defer f.Close();
-	
+	defer f.Close()
+
 	hash := sha1.New()
-	_, err = io.Copy(f, io.TeeReader(req.Body, hash));
+	_, err = io.Copy(f, io.TeeReader(req.Body, hash))
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	digest := hex.EncodeToString(hash.Sum([]byte{}))
 	uri := fmt.Sprintf("sha1:%s", strings.ToLower(digest))
-	
+
 	res.Header().Set("Location", uri)
-	
+
 	err = os.Rename(f.Name(), filepath.Join(server.Root, uri))
 	if err != nil {
 		go os.Remove(f.Name())
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	var parentChain string
 	urls := urlParents(u)
-	for i := len(urls)-1; i > 0; i-- {
+	for i := len(urls) - 1; i > 0; i-- {
 		parentChain += sparql.MakeQuery(" %1u sw:parent %2u .", &urls[i-1], &urls[i])
 	}
-	
-	/*var parentUrl url.URL = *u
-	var parentChain string
-	for parentUrl.Path != "/" {
-		log.Println(parentUrl)
-		var childUrl url.URL = parentUrl
-		if parentUrl.Path[len(parentUrl.Path)-1] == '/' {
-			parentUrl.Path = parentUrl.Path[:len(parentUrl.Path)-1]
-		}
-		parentUrl.Path = filepath.Dir(parentUrl.Path)
-		if parentUrl.Path != "/" {
-			parentUrl.Path = parentUrl.Path + "/"
-		}
-		parentChain += sparql.MakeQuery(" %1u sw:parent %2u .", &childUrl, &parentUrl)
-	}*/
 
 	_, err = server.dataSet.Update(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
@@ -139,14 +124,14 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 		CLEAR SILENT GRAPH %1u;
 		INSERT DATA {
 			GRAPH %1u {
-				%2u
-					sw:hash        %3u ;
-					sw:contentType %4s .
-				%5q
+				%1u
+					sw:hash        %2u ;
+					sw:contentType %3s .
+				%4q
 			}
 		}
-	`, rdfUrl, u, uri, req.Header.Get("Content-Type"), parentChain))
-	
+	`, u, uri, req.Header.Get("Content-Type"), parentChain))
+
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
@@ -157,7 +142,7 @@ func (server SmartServer) handlePUT(rdfUrl, u *url.URL, res http.ResponseWriter,
 
 func urlParents(u *url.URL) []url.URL {
 	var parentUrl url.URL = *u
-	var parentChain []url.URL = []url.URL{ parentUrl }
+	var parentChain []url.URL = []url.URL{parentUrl}
 	if parentUrl.Fragment != "" {
 		parentUrl.Fragment = ""
 		parentChain = append(parentChain, parentUrl)
@@ -182,7 +167,7 @@ func urlParents(u *url.URL) []url.URL {
 	return parentChain
 }
 
-func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWriter, req *http.Request) {
+func (server SmartServer) handleDELETE(u *url.URL, res http.ResponseWriter, req *http.Request) {
 	result, err := server.dataSet.Select(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		SELECT ?hash
@@ -192,7 +177,7 @@ func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWrit
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	if len(result.Results.Bindings) < 1 {
 		handleError(res, 404, "Not Found")
 		return
@@ -202,12 +187,12 @@ func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWrit
 	_, err = server.dataSet.Update(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		DROP SILENT GRAPH %1u
-	`, rdfUrl))
+	`, u))
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	result, err = server.dataSet.Select(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		SELECT (count(?subj) AS ?count)
@@ -217,7 +202,7 @@ func (server SmartServer) handleDELETE(rdfUrl, u *url.URL, res http.ResponseWrit
 		handleError(res, 500, err.Error())
 		return
 	}
-	
+
 	count, err := strconv.ParseInt(result.Results.Bindings[0]["count"].Value, 10, 0)
 	if err == nil && count == 0 {
 		err := os.Remove(filepath.Join(server.Root, hash))
@@ -233,20 +218,13 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		Host:   req.Host,
 	}).ResolveReference(req.URL)
 
-	var context url.URL = *curUrl
-	if context.RawQuery == "" {
-		context.RawQuery = "rdf"
-	} else {
-		context.RawQuery = context.RawQuery + "&rdf"
-	}
-
 	log.Println(req.Method + " " + curUrl.String())
-	
+
 	if req.URL.RawQuery == "keygen" {
 		server.handleKeygen(res, req)
 		return
 	}
-	
+
 	auth := false
 	if req.TLS != nil {
 		for _, clientCert := range req.TLS.PeerCertificates {
@@ -269,34 +247,33 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 			return
 		}
 	}
-	
-	if ! auth {
+
+	if !auth {
 		// RFC 6797: HTTP Strict Transport Security (HSTS)
 		res.Header().Set("Strict-Transport-Security", "max-age=1")
 		handleError(res, 403, "Unauthorized")
 		return
 	}
 
-	go func(){
+	go func() {
 		referrer, err := url.Parse(req.Referer())
 		if err != nil {
 			return
 		}
 		referrer = curUrl.ResolveReference(referrer)
 		// Add the referrer in storage
-		err = server.dataSet.AddQuad(&context, curUrl, SmartWeb_hasReferer, referrer)
+		err = server.dataSet.AddQuad(curUrl, curUrl, SmartWeb_hasReferer, referrer)
 		if err != nil {
 			log.Println(err)
 		}
 	}()
-	
 
 	if req.Method == "GET" || req.Method == "HEAD" {
-		server.handleGET(&context, curUrl, res, req)
+		server.handleGET(curUrl, res, req)
 	} else if req.Method == "PUT" {
-		server.handlePUT(&context, curUrl, res, req)
+		server.handlePUT(curUrl, res, req)
 	} else if req.Method == "DELETE" {
-		server.handleDELETE(&context, curUrl, res, req)
+		server.handleDELETE(curUrl, res, req)
 	} else {
 		res.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -305,7 +282,7 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 var header_value_regexp, _ = regexp.Compile(`([^,"]*|"([^"\\]*|\\.)*")*`)
 
 func splitHeader(header string) []string {
-	var result []string;
+	var result []string
 	var start = 0
 	loc := header_value_regexp.FindStringIndex(header[start:])
 	for n := 0; n < 100 && loc != nil; n++ {

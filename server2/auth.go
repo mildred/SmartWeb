@@ -1,10 +1,10 @@
 package server2
 
 import (
-	"net/url"
 	"crypto/sha256"
 	"crypto/x509"
 	"github.com/mildred/SmartWeb/sparql"
+	"net/url"
 )
 
 var query = `
@@ -72,7 +72,7 @@ func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, e
 	for _, url := range urlParents(u) {
 		parentChain = parentChain + sparql.MakeQuery(" %1u", url.String())
 	}
-	
+
 	res, err := dataSet.Select(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 
@@ -94,16 +94,16 @@ func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	
+
 	var firstPage string = ""
 	var defaultAuth, actionAuth, auth string
 	for _, binding := range res.Results.Bindings {
 		if firstPage != "" && firstPage != binding["page"].Value {
-			break;
+			break
 		}
 		firstPage = binding["page"].Value
 		auth := binding["auth"].Value
-		act  := binding["act"].Value
+		act := binding["act"].Value
 		if act == "tag:mildred.fr,2015-05:SmartWeb#Default" {
 			if defaultAuth != "" && defaultAuth != auth {
 				defaultAuth = "deny"
@@ -125,7 +125,6 @@ func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, e
 	}
 	return auth == "tag:mildred.fr,2015-05:SmartWeb#allow", nil
 }
-
 
 func SHA256Fingerprint(cert x509.Certificate) []byte {
 	h := sha256.New()
