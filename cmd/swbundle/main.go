@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"net/http"
+	"io"
 )
 
 func main() {
@@ -55,9 +57,24 @@ func readDir(b *bundle.Writer, prefix, path string) error {
 		return nil
 
 	} else {
+
+		var firstBytes [512]byte
+		io.ReadFull(f, firstBytes[:])
+		mimeType := http.DetectContentType(firstBytes[:])
 		
-		// FIXME use base URI provided in args and content type
-		return b.InsertFile(path, path, f)
+		// FIXME use base URI provided in args
+		// FIXME detect more text/* content types based on extension
+		fullUri := path
+		err := b.InsertFile(fullUri, path, f)
+		if err != nil {
+			return err
+		}
+
+		return b.WriteQuad(
+			fullUri,
+			"tag:mildred.fr,2015-05:SmartWeb#contentType",
+			mimeType,
+			fullUri)
 
 	}
 }
