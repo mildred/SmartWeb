@@ -103,7 +103,7 @@ func (server SmartServer) handlePUT(u *url.URL, res http.ResponseWriter, req *ht
 	digest := hex.EncodeToString(hash.Sum([]byte{}))
 	uri := fmt.Sprintf("sha1:%s", strings.ToLower(digest))
 
-	res.Header().Set("Location", uri)
+	res.Header().Set("Hash", uri)
 
 	err = os.Rename(f.Name(), filepath.Join(server.Root, uri))
 	if err != nil {
@@ -272,6 +272,8 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		server.handleGET(curUrl, res, req)
 	} else if req.Method == "PUT" {
 		server.handlePUT(curUrl, res, req)
+	} else if req.Method == "POST" {
+		server.handlePOSTBundle(curUrl, res, req)
 	} else if req.Method == "DELETE" {
 		server.handleDELETE(curUrl, res, req)
 	} else {

@@ -1,4 +1,4 @@
-headerparse.peg.go: headerparse.peg
+nquads.peg.go: nquads.peg
 	peg -switch -inline $<
 
 prepare:
