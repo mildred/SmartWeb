@@ -2,6 +2,7 @@ package server2
 
 import (
 	"archive/zip"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"

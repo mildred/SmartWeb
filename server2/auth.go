@@ -7,66 +7,6 @@ import (
 	"net/url"
 )
 
-var query = `
-PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
-
-SELECT ?acl ?auth
-WHERE {
-	?acl
-		a sw:ACL ;
-		sw:about/(^sw:parent)* %page ;
-		sw:user+ ?user
-		?auth ?method .
-	VALUES ?user { %user sw:Anonymous }
-	FILTER ( ?user == %user || ?user == sw:Anonymous )
-	FILTER ( ?auth == sw:allow || ?auth == sw:deny )
-	FILTER ( ?method == %method || ?method == sw:Default )
-}
-
-
-SELECT DISTINCT ?acl ?auth ?defAuth
-WHERE {
-	?acl
-		?auth %method ;
-		?defAuth sw:Default ;
-		sw:user+ ?user .
-	VALUES ?user { %user sw:Anonymous }
-	VALUES ?auth { sw:allow sw:deny }
-	VALUES ?defAauth { sw:allow sw:deny }
-	{
-		SELECT ?page ?acl
-		WHERE {
-			%page sw:parent ?page .
-			?acl a sw:ACL ; sw:about ?page .
-		}
-		LIMIT 1
-	}
-}
-
-	?acl
-		a sw:ACL
-		sw:about ?page
-	
-	%page sw:parent* ?page
-
-
-DELETE {
-	?oldacl ?pred ?obj .
-}
-INSERT {
-	[	a sw:ACL ;
-		sw:about %page ;
-		sw:user  %user ;
-		sw:allow %action .
-	]
-}
-WHERE {
-	?oldacl a sw:ACL ;
-		sw:about %page ;
-		sw:user %user .
-}
-`
-
 func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, error) {
 	var parentChain string
 	for _, url := range urlParents(u) {
@@ -79,8 +19,8 @@ func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, e
 		SELECT ?page ?acl ?user ?auth ?act
 		WHERE {
 			VALUES ?src { %1q }
-			?src
-				sw:parent* ?page .
+			?page
+				sw:child* ?src .
 			?acl
 				a        sw:ACL ;
 				sw:about ?page ;

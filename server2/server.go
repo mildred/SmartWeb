@@ -115,7 +115,7 @@ func (server SmartServer) handlePUT(u *url.URL, res http.ResponseWriter, req *ht
 	var parentChain string
 	urls := urlParents(u)
 	for i := len(urls) - 1; i > 0; i-- {
-		parentChain += sparql.MakeQuery(" %1u sw:parent %2u .", &urls[i-1], &urls[i])
+		parentChain += sparql.MakeQuery(" %2u sw:child %1u .", &urls[i-1], &urls[i])
 	}
 
 	_, err = server.dataSet.Update(sparql.MakeQuery(`
