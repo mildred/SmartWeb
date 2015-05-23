@@ -15,27 +15,64 @@ func main() {
 	flag.Parse()
 	bundleFile := flag.Arg(0)
 	source := flag.Arg(1)
+	
+	var err error
+	if source != "" {
+		err = writeBundle(bundleFile, source, *baseUri)
+	} else {
+		err = readBundle(bundleFile)
+	}
 
-	f, err := os.Create(bundleFile)
 	if err != nil {
 		log.Fatalln(err)
-		return
+	}
+}
+
+func writeBundle(bundleFile, sourceDir, baseUri string) error {
+	f, err := os.Create(bundleFile)
+	if err != nil {
+		return err
 	}
 	defer f.Close()
 	
-	b, err := bundle.NewWriter(f, *baseUri)
+	b, err := bundle.NewWriter(f, baseUri)
 	if err != nil {
-		log.Fatalln(err)
-		return
+		return err
 	}
 
-	defer b.Close();
+	defer b.Close()
 	
-	err = readDir(b, source, "")
+	err = readDir(b, sourceDir, "")
 	if err != nil {
-		log.Fatalln(err)
-		return
+		return err
 	}
+	return nil
+}
+
+func readBundle(bundleFile string) error {
+	r, err := bundle.OpenReader(bundleFile)
+	if err != nil {
+		return err
+	}
+
+	defer r.Close()
+	
+	graph, err := r.Graph()
+	if err != nil {
+		return err
+	}
+	
+	for {
+		statement, err := graph.ReadStatement()
+		if err != nil {
+			return err
+		} else if statement == nil {
+			break
+		}
+		log.Printf("%s\n", statement.String())
+	}
+
+	return nil
 }
 
 func readDir(b *bundle.Writer, prefix, path string) error {
@@ -43,6 +80,8 @@ func readDir(b *bundle.Writer, prefix, path string) error {
 	if err != nil {
 		return err
 	}
+	
+	defer f.Close()
 
 	names, err := f.Readdirnames(-1)
 	if err == nil {

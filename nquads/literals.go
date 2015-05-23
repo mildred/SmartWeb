@@ -7,27 +7,55 @@ import (
 )
 
 var XsdNamespace = `http://www.w3.org/2001/XMLSchema#`
+var XsdString    = XsdNamespace + "string"
+var XsdBoolean   = XsdNamespace + "boolean"
+
+type Node interface {
+	Encode() string
+}
 
 type BlankNode struct {
 	string
+}
+
+func (blank *BlankNode) Encode() string {
+	return EncodeBlank(blank.string)
 }
 
 type IriNode struct {
 	string
 }
 
-type StringNode struct {
+func (iri IriNode) Encode() string {
+	return EncodeIri(iri.string)
+}
+
+type LiteralNode struct {
 	string
-}
-
-type LocStringNode struct {
-	StringNode
 	Lang string
+	Type IriNode
 }
 
-type TypedStringNode struct {
-	StringNode
-	Type IriNode
+func (lit LiteralNode) Encode() string {
+	if lit.Lang != "" {
+		return EncodeLocString(lit.string, lit.Lang)
+	} else if lit.Type.string == "" || lit.Type.string == XsdString {
+		return EncodeString(lit.string)
+	} else {
+		return EncodeTypedString(lit.string, lit.Type.string)
+	}
+}
+
+func (str StringNode) Encode() string {
+	return EncodeString(str.string)
+}
+
+func (str LocStringNode) Encode() string {
+	return EncodeLocString(str.string, str.Lang)
+}
+
+func (str TypedStringNode) Encode() string {
+	return EncodeTypedString(str.string, str.Type.string)
 }
 
 func EscapeString (s string) string {
@@ -72,6 +100,7 @@ func EncodeInteger(i interface{}) string {
 
 func EncodeAny(node interface{}) string {
 	switch n := node.(type) {
+		case LiteralNode:     return n.Encode()
 		case BlankNode:       return EncodeBlank(n.string)
 		case IriNode:         return EncodeIri(n.string)
 		case LocStringNode:   return EncodeLocString(n.string, n.Lang)
@@ -90,6 +119,7 @@ func EncodeAny(node interface{}) string {
 		case uint16:          return EncodeInteger(n)
 		case uint32:          return EncodeInteger(n)
 		case uint64:          return EncodeInteger(n)
+		case Node:			  return n.Encode()
 		default:              return ""
 	}
 }
