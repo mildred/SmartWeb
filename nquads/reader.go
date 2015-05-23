@@ -31,17 +31,6 @@ func logf(format string, args ...interface{}) {
 	}
 }
 
-func ReadBuffer(buf string) ([]Statement, error) {
-	nq := NQuads{Buffer: buf}
-	nq.Init()
-	err := nq.Parse()
-	if err != nil {
-		return []Statement{}, err
-	}
-	
-	nq.Execute()
-	return nq.Statements, nil
-}
 
 type Reader struct {
 	*bufio.Reader
@@ -422,42 +411,3 @@ func (p *Reader) readSpaces() error {
 		}
 	}
 }
-
-/*
-func (p *parser) readRunes(num int) ([]rune, error) {
-	var res [num]rune
-	for i := 0; i < num; i++ {
-		rune, _, err := p.ReadRune()
-		if err != nil && err == io.EOF {
-			return res, nil
-		} else if err != nil {
-			return res, err
-		}
-		res[i] = rune
-	}
-	return res, nil
-}
-*/
-
-/*
-nquadsDoc 	<- 	ws* statement? (EOL ws* statement?)* !.
-statement 	<- 	subject predicate object graphLabel? "." { p.setStatement() } ws*
-subject 	<- 	(IRIREF ws* / BLANK_NODE_LABEL ws*) { p.setSubject() }
-predicate 	<- 	(IRIREF ws*) { p.setPredicate() }
-object 		<- 	(IRIREF ws* / BLANK_NODE_LABEL ws* / literal) { p.setObject() }
-graphLabel 	<- 	(IRIREF ws* / BLANK_NODE_LABEL ws*) { p.setGraph() }
-literal 	<- 	STRING_LITERAL_QUOTE ws* ("^^" ws* IRIREF ws* / LANGTAG ws*)?
-
-LANGTAG 		<- 	"@" <[a-zA-Z]+ ("-" [a-zA-Z0-9]+)*>{ p.setLangTag(buffer[begin:end]) }
-EOL 			<- 	[\r\n]+
-IRIREF 			<- 	'<' <([^\0x01-\0x20<>"{}|^`\\] / UCHAR)*>{ p.setIri(buffer[begin:end]) } '>'
-STRING_LITERAL_QUOTE <- '"' <([^"\\\r\n] / ECHAR / UCHAR)*>{ p.setString(buffer[begin:end]) } '"'
-BLANK_NODE_LABEL <-	'_:' <[^\t\r\n ]*>{ p.setBlank(buffer[begin:end]) }
-UCHAR 			<-	'\\u' HEX HEX HEX HEX / '\\U' HEX HEX HEX HEX HEX HEX HEX HEX
-ECHAR 			<-  "\\" [tbnrf"'\\]
-HEX 			<- 	[0-9A-Fa-f]
-
-spc <- [\t ]
-ws  <- ( spc / comment )*
-comment <- "#" [^\r\n]*
-*/
