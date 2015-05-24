@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var MimeType = "application/smartweb-bundle+zip"
+
 type Writer struct {
 	*zip.Writer
 	nquads.NQuadWriter
@@ -29,7 +31,7 @@ func NewWriter(f io.Writer, baseUri string) (*Writer, error) {
 		return nil, err
 	}
 
-	_, err = mimetype.Write([]byte("application/smartweb-bundle+zip"))
+	_, err = mimetype.Write([]byte(MimeType))
 	if err != nil {
 		return nil, err
 	}

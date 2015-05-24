@@ -35,6 +35,14 @@ func StringLiteral(s string) string {
 	return `"` + s + `"`
 }
 
+func TypedStringLiteral(s, typ string) string {
+	return StringLiteral(s) + "^^" + IRILiteral(typ)
+}
+
+func LocStringLiteral(s, lang string) string {
+	return StringLiteral(s) + "@" + lang
+}
+
 func BoolLiteral(b bool) string {
 	if b {
 		return "true"
@@ -53,6 +61,10 @@ func Float32Literal(f float32) string {
 
 func Float64Literal(f float64) string {
 	return fmt.Sprintf("%g", f)
+}
+
+func BlankLiteral(blankId string) string {
+	return "_:" + blankId
 }
 
 // Replace illegal characters in SPARQL IRI and surround them with <...>

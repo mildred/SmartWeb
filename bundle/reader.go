@@ -52,6 +52,29 @@ func (r *Reader) Graph() (*nquads.ReadCloser, error) {
 	return nil, nil
 }
 
+func (r *Reader) GraphStatements(buffer int) <-chan interface{} {
+	c := make(chan interface{}, buffer)
+	go func(){
+		g, err := r.Graph()
+		if err != nil {
+			c <- err
+			return
+		}
+		for {
+			st, err := g.ReadStatement()
+			if err != nil {
+				c <- err
+				return
+			} else if st == nil {
+				close(c)
+				return
+			}
+			c <- st
+		}
+	}()
+	return c
+}
+
 func readGraph(r io.Reader) (string, error) {
 	bytes, err := ioutil.ReadAll(r)
 	return string(bytes), err

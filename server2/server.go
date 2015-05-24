@@ -26,14 +26,16 @@ type SmartServer struct {
 	Certificate *x509.Certificate
 	PrivateKey  crypto.PrivateKey
 	dataSet     *sparql.Client
+	useAcl      bool
 }
 
-func CreateFileServer(path string, Certificate *x509.Certificate, PrivateKey crypto.PrivateKey, query, update string) *SmartServer {
+func CreateFileServer(path string, Certificate *x509.Certificate, PrivateKey crypto.PrivateKey, query, update string, useAcl bool) *SmartServer {
 	return &SmartServer{
 		Root:        path,
 		Certificate: Certificate,
 		PrivateKey:  PrivateKey,
 		dataSet:     sparql.NewClient(query, update),
+		useAcl:      useAcl,
 	}
 }
 
@@ -224,35 +226,37 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 		server.handleKeygen(res, req)
 		return
 	}
-
-	auth := false
-	if req.TLS != nil {
-		for _, clientCert := range req.TLS.PeerCertificates {
+	
+	if server.useAcl {
+		auth := false
+		if req.TLS != nil {
+			for _, clientCert := range req.TLS.PeerCertificates {
+				var err error
+				userid := fmt.Sprintf("x509-certificate-fingerprint:sha256:%s", strings.ToLower(hex.EncodeToString(SHA256Fingerprint(*clientCert))))
+				auth, err = checkAuth(server.dataSet, curUrl, req.Method, userid)
+				if err != nil {
+					handleError(res, 500, err.Error())
+					return
+				}
+				if auth {
+					break
+				}
+			}
+		} else {
 			var err error
-			userid := fmt.Sprintf("x509-certificate-fingerprint:sha256:%s", strings.ToLower(hex.EncodeToString(SHA256Fingerprint(*clientCert))))
-			auth, err = checkAuth(server.dataSet, curUrl, req.Method, userid)
+			auth, err = checkAuth(server.dataSet, curUrl, req.Method, "tag:mildred.fr,2015-05:SmartWeb#Anonymous")
 			if err != nil {
 				handleError(res, 500, err.Error())
 				return
 			}
-			if auth {
-				break
-			}
 		}
-	} else {
-		var err error
-		auth, err = checkAuth(server.dataSet, curUrl, req.Method, "tag:mildred.fr,2015-05:SmartWeb#Anonymous")
-		if err != nil {
-			handleError(res, 500, err.Error())
+	
+		if !auth {
+			// RFC 6797: HTTP Strict Transport Security (HSTS)
+			res.Header().Set("Strict-Transport-Security", "max-age=1")
+			handleError(res, 403, "Unauthorized")
 			return
 		}
-	}
-
-	if !auth {
-		// RFC 6797: HTTP Strict Transport Security (HSTS)
-		res.Header().Set("Strict-Transport-Security", "max-age=1")
-		handleError(res, 403, "Unauthorized")
-		return
 	}
 
 	go func() {

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# ./acl.sh page="<http://127.0.0.1:8000/>" user=sw:Anonymous action='"POST"'
+
 while true; do
     case "$1" in
         action=*)   action="${1#*=}" ; shift ;;
@@ -12,7 +14,7 @@ while true; do
 done
 
 ( set -x
-sparql-update 'http://127.0.0.1:8080/openrdf-sesame/repositories/smartweb/statements' "
+sparql-update 'http://127.0.0.1:8080/repositories/smartweb/statements' "
 PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 
 DELETE {
@@ -33,7 +35,7 @@ INSERT DATA {
 }
 "
 )
-sparql-query 'http://127.0.0.1:8080/openrdf-sesame/repositories/smartweb' "   
+sparql-query 'http://127.0.0.1:8080/repositories/smartweb' "   
 PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 
 SELECT ?acl ?page ?user

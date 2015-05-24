@@ -43,6 +43,7 @@ func main() {
 	var rdf4store_port    = flag.Int("4s-port", -1, "4store HTTP gateway port to autodetect SPARQL endpoints")
 	var sesame_port       = flag.Int("sesame-port", -1, "OpenRDF Sesame HTTP gateway port to autodetect SPARQL endpoints")
 	var sesame_dsname     = flag.String("sesame-datastore", "smartweb", "OpenRDF Sesame datastore name to autodetect SPARQL endpoints")
+	var noacl             = flag.Bool("noacl", false, "Disable ACL")
 	flag.Parse()
 	
 	var sparql SparqlEndpoint
@@ -54,7 +55,7 @@ func main() {
 	} else if *rdf4store_port != -1 {
 		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/sparql/", *rdf4store_port)
 	} else if *sesame_port != -1 {
-		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/openrdf-sesame/repositories/%s", *sesame_port, *sesame_dsname)
+		sparql.query = fmt.Sprintf("http://127.0.0.1:%d/repositories/%s", *sesame_port, *sesame_dsname)
 	}
 	
 	if *sparql_update_url != "" {
@@ -64,7 +65,7 @@ func main() {
 	} else if *rdf4store_port != -1 {
 		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/update/", *rdf4store_port)
 	} else if *sesame_port != -1 {
-		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/openrdf-sesame/repositories/%s/statements", *sesame_port, *sesame_dsname)
+		sparql.update = fmt.Sprintf("http://127.0.0.1:%d/repositories/%s/statements", *sesame_port, *sesame_dsname)
 	}
 	
 	if sparql.query == "" {
@@ -116,7 +117,7 @@ func main() {
 		return
 	}
 
-	srv := server2.CreateFileServer(*path, x509Cert, config.Certificates[0].PrivateKey, sparql.query, sparql.update)
+	srv := server2.CreateFileServer(*path, x509Cert, config.Certificates[0].PrivateKey, sparql.query, sparql.update, !*noacl)
 
 	s := &http.Server{
 		Addr:           *listen,

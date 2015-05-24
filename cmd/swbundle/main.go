@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/mildred/SmartWeb/bundle"
+	"github.com/mildred/SmartWeb/nquads"
 	"log"
 	"os"
 	"path/filepath"
@@ -57,19 +58,12 @@ func readBundle(bundleFile string) error {
 
 	defer r.Close()
 	
-	graph, err := r.Graph()
-	if err != nil {
-		return err
-	}
-	
-	for {
-		statement, err := graph.ReadStatement()
-		if err != nil {
-			return err
-		} else if statement == nil {
-			break
+	for value := range r.GraphStatements(64) {
+		switch st := value.(type) {
+			case error: return st
+			case *nquads.Statement: log.Printf("%s\n", st.String())
+			default: panic(value)
 		}
-		log.Printf("%s\n", statement.String())
 	}
 
 	return nil

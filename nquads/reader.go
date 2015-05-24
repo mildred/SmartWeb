@@ -68,10 +68,10 @@ func (p *Reader) readStatement() (*Statement, error) {
 	var err error
 	p.eofIsError = false
 
-	statement.Subject, err = p.readSubject()
+	statement.subject, err = p.readSubject()
 	if err != nil {
 		return nil, err
-	} else if statement.Subject == nil {
+	} else if statement.subject == nil {
 		return nil, nil
 	}
 	
@@ -79,19 +79,19 @@ func (p *Reader) readStatement() (*Statement, error) {
 	
 	p.eofIsError = true;
 	
-	statement.Predicate, err = p.readIri()
+	statement.predicate, err = p.readIri()
 	if err != nil {
 		return nil, err
-	} else if statement.Predicate == nil {
+	} else if statement.predicate == nil {
 		return nil, ErrExpectedPredicate
 	}
 	
 	logf("Read predicate %s", statement.String())
 	
-	statement.Object, err = p.readObject()
+	statement.object, err = p.readObject()
 	if err != nil {
 		return nil, err
-	} else if statement.Object == nil {
+	} else if statement.object == nil {
 		return nil, ErrExpectedObject
 	}
 
@@ -107,7 +107,7 @@ func (p *Reader) readStatement() (*Statement, error) {
 		return nil, err
 	}
 	
-	statement.Graph, err = p.readIri()
+	statement.graph, err = p.readIri()
 	if err != nil {
 		return nil, err
 	}
