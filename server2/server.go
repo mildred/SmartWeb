@@ -50,9 +50,10 @@ func (server SmartServer) handleGET(u *url.URL, res http.ResponseWriter, req *ht
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 		SELECT ?hash ?type
 		WHERE {
-			%1u
-				sw:hash        ?hash ;
-				sw:contentType ?type .
+			GRAPH %1u {
+				OPTIONAL { %1u sw:contentType ?type }
+				%1u sw:hash ?hash
+			}
 		}
 		LIMIT 1
 	`, u))
@@ -77,7 +78,9 @@ func (server SmartServer) handleGET(u *url.URL, res http.ResponseWriter, req *ht
 		return
 	}
 
-	res.Header().Set("Content-Type", content_type.Value)
+	if content_type.Value != "" {
+		res.Header().Set("Content-Type", content_type.Value)
+	}
 	res.Header().Set("Etag", hash.Value)
 	res.WriteHeader(http.StatusOK)
 
@@ -194,24 +197,27 @@ func (server SmartServer) handleDELETE(u *url.URL, res http.ResponseWriter, req 
 		handleError(res, 500, err.Error())
 		return
 	}
-
-	result, err = server.dataSet.Select(sparql.MakeQuery(`
-		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
-		SELECT (count(?subj) AS ?count)
-		WHERE { ?subj sw:hash %1u . }
-	`, hash))
-	if err != nil {
-		handleError(res, 500, err.Error())
-		return
-	}
-
-	count, err := strconv.ParseInt(result.Results.Bindings[0]["count"].Value, 10, 0)
-	if err == nil && count == 0 {
-		err := os.Remove(filepath.Join(server.Root, hash))
+	
+	res.WriteHeader(http.StatusNoContent)
+	
+	go func(){
+		result, err = server.dataSet.Select(sparql.MakeQuery(`
+			PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
+			SELECT (count(?subj) AS ?count)
+			WHERE { ?subj sw:hash %1u . }
+		`, hash))
 		if err != nil {
 			log.Println(err)
 		}
-	}
+	
+		count, err := strconv.ParseInt(result.Results.Bindings[0]["count"].Value, 10, 0)
+		if err == nil && count == 0 {
+			err := os.Remove(filepath.Join(server.Root, hash))
+			if err != nil {
+				log.Println(err)
+			}
+		}
+	}()
 }
 
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {

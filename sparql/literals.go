@@ -67,6 +67,15 @@ func BlankLiteral(blankId string) string {
 	return "_:" + blankId
 }
 
+func IRIRelLiteral(baseUri *url.URL, uri string) string {
+	u, err := baseUri.Parse(uri)
+	if err != nil {
+		return IRILiteral(uri)
+	} else {
+		return IRILiteral(u.String())
+	}
+}
+
 // Replace illegal characters in SPARQL IRI and surround them with <...>
 // IRIREF ::= '<' ([^<>"{}|^`\]-[#x00-#x20])* '>'
 func IRILiteral(uri string) string {

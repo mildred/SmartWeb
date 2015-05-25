@@ -95,8 +95,13 @@ func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, 
 		}
 	}
 	
-	res.Write([]byte(statements))
-	res.Write([]byte("\n"))
+	_, err = server.dataSet.Update(string(statements))
+	if err != nil {
+		handleError(res, 500, err.Error())
+		return
+	}
+
+	res.WriteHeader(http.StatusOK)	
 	res.Write([]byte(strings.Join(logs, "\n")))
 }
 
@@ -177,15 +182,15 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string
 			var s, p, o string
 			switch s_s, s_t := st.Subject(); s_t {
 				default: continue
-				case nquads.TypeIri:	s = sparql.IRILiteral(s_s); break
+				case nquads.TypeIri:	s = sparql.IRIRelLiteral(baseUri, s_s); break
 				case nquads.TypeBlank:	s = sparql.BlankLiteral(s_s); break
 			}
-			p = sparql.IRILiteral(st.Predicate())
+			p = sparql.IRIRelLiteral(baseUri, st.Predicate())
 			switch st.ObjectType() {
 				default: continue
 				case nquads.TypeIri:
 					iri, _ := st.ObjectIri()
-					o = sparql.IRILiteral(iri)
+					o = sparql.IRIRelLiteral(baseUri, iri)
 					break
 				case nquads.TypeBlank:
 					b, _ := st.ObjectBlank()
@@ -221,7 +226,7 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string
 
 type inserter struct {
 	statements string
-	inDataStatement bool
+	currentStatement string
 	currentGraph string
 	currentSubject string
 	currentPredicate string
@@ -254,31 +259,38 @@ func (i *inserter) closeSubject(suffix string) {
 
 func (i *inserter) closeGraph(suffix string) {
 	if i.currentGraph != "" {
-		i.closeSubject("");
 		i.statements += " }" + suffix
 		i.currentGraph = ""
+		i.currentSubject = ""
+		i.currentPredicate = ""
+		i.inObject = false
 	}
 }
 
-func (i *inserter) closeData(suffix string) {
-	if i.inDataStatement {
+func (i *inserter) closeStatement(suffix string) {
+	if i.currentStatement == "DATA" {
 		i.closeGraph("");
 		i.statements += " }" + suffix
-		i.inDataStatement = false
+		i.currentStatement = ""
+	} else if i.currentStatement != "" {
+		i.statements += suffix
+		i.currentStatement = ""
 	}
 }
 
 func (i *inserter) deleteGraph(graphUri *url.URL) {
-	i.closeData("\n")
+	i.closeStatement(" ;\n")
 	i.statements += sparql.MakeQuery(
-		"DROP SILENT GRAPH %1u\n",
+		"DROP SILENT GRAPH %1u",
 		graphUri)
+	i.currentStatement = "DROP"
 }
 
 func (i *inserter) insertData(encSubj, encPred, encObj, encGraph string) {
-	if ! i.inDataStatement {
+	if i.currentStatement != "DATA" {
+		i.closeStatement(" ;\n")
 		i.statements += "INSERT DATA {\n"
-		i.inDataStatement = true
+		i.currentStatement = "DATA"
 	}
 	if i.currentGraph != encGraph {
 		i.closeGraph("\n")
@@ -301,6 +313,6 @@ func (i *inserter) insertData(encSubj, encPred, encObj, encGraph string) {
 }
 
 func (i *inserter) terminate() string {
-	i.closeData("")
+	i.closeStatement("")
 	return i.statements
 }
