@@ -1,15 +1,20 @@
 package server2
 
 import (
+	"archive/zip"
 	"github.com/mildred/SmartWeb/bundle"
 	"github.com/mildred/SmartWeb/nquads"
 	"github.com/mildred/SmartWeb/sparql"
+	"os"
+	"path"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"fmt"
 	"strings"
+	"crypto/sha1"
+	"encoding/hex"
 )
 
 func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, req *http.Request) {
@@ -43,15 +48,70 @@ func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, 
 		return
 	}
 	
-	statements, logs, err := makeStatements(u, b.GraphStatements(0))
+	statements, wantedHashes, logs, err := makeStatements(u, b.GraphStatements(0))
 	if err != nil {
 		handleError(res, 400, err.Error())
 		return
 	}
 	
+	for _, zipfile := range b.Reader.File {
+		if strings.HasPrefix(zipfile.Name, "sha1:") {
+			hash, err := getBundleSHA1(zipfile)
+			if err != nil {
+				handleError(res, 500, err.Error())
+				return
+			}
+			if ! wantedHashes[hash] {
+				continue
+			}
+			
+			zf, err := zipfile.Open()
+			if err != nil {
+				handleError(res, 500, err.Error())
+				return
+			}
+			defer zf.Close()
+			
+			f, err := ioutil.TempFile(server.Root, "temp:")
+			if err != nil {
+				handleError(res, 500, err.Error())
+				return
+			}
+			defer f.Close()
+			
+			_, err = io.Copy(f, zf)
+			if err != nil {
+				go os.Remove(f.Name())
+				handleError(res, 500, err.Error())
+				return
+			}
+			
+			err = os.Rename(f.Name(), path.Join(server.Root, hash))
+			if err != nil {
+				go os.Remove(f.Name())
+				handleError(res, 500, err.Error())
+				return
+			}
+		}
+	}
+	
 	res.Write([]byte(statements))
 	res.Write([]byte("\n"))
 	res.Write([]byte(strings.Join(logs, "\n")))
+}
+
+func getBundleSHA1(zipfile *zip.File) (string, error) {
+	h := sha1.New()
+	f, err := zipfile.Open()
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	_, err = io.Copy(h, f)
+	if err != nil {
+		return "", err
+	}
+	return "sha1:" + strings.ToLower(hex.EncodeToString(h.Sum([]byte{}))), nil
 }
 
 var RdfNamespace   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -76,14 +136,15 @@ func isSubUrl(base, u *url.URL) bool {
 	return strings.HasPrefix(u.Path, basePath)
 }
 
-func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, error) {
+func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string]bool, []string, error) {
 	graphsRelUri := make(map[string]*url.URL)
 	var ins inserter
 	var logs []string
+	var wantedHashes map[string]bool = make(map[string]bool)
 	for value := range ch {
 		st, is_st := value.(*nquads.Statement)
 		if !is_st {
-			return "", logs, value.(error)
+			return "", wantedHashes, logs, value.(error)
 		}
 		
 		graph, has_graph := st.Graph()
@@ -107,6 +168,12 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 			graphsRelUri[graph] = graphUri
 			ins.deleteGraph(graphUri)
 		} else if graphUri, ok := graphsRelUri[graph]; has_graph && ok && graphUri != nil {
+			if st.Predicate() == SwHash {
+				hash, is_hash := st.ObjectIri()
+				if is_hash {
+					wantedHashes[hash] = true
+				}
+			}
 			var s, p, o string
 			switch s_s, s_t := st.Subject(); s_t {
 				default: continue
@@ -148,7 +215,7 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 		}
 	}
 	statements := ins.terminate()
-	return statements, logs, nil
+	return statements, wantedHashes, logs, nil
 }
 
 
