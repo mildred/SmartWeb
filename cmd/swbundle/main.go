@@ -46,7 +46,7 @@ func writeBundle(bundleFile, sourceDir, baseUri string) error {
 
 	defer b.Close()
 	
-	err = readDir(b, sourceDir, "")
+	err = readDir(b, sourceDir, "", nil)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func readBundle(bundleFile string) error {
 	return nil
 }
 
-func readDir(b *bundle.Writer, prefix, path string) error {
+func readDir(b *bundle.Writer, prefix, path string, parentpath *string) error {
 	f, err := os.Open(filepath.Join(prefix, path))
 	if err != nil {
 		return err
@@ -82,10 +82,30 @@ func readDir(b *bundle.Writer, prefix, path string) error {
 
 	names, err := f.Readdirnames(-1)
 	if err == nil {
+		if path != "" {
+			path = path + "/"
+		}
+		
+		b.WriteTriple(
+			path,
+			"tag:mildred.fr,2015-05:SmartWeb#relativePath",
+			path)
+
+		if parentpath != nil {
+			err = b.WriteQuadIri(
+				*parentpath,
+				"tag:mildred.fr,2015-05:SmartWeb#child",
+				path,
+				*parentpath)
+			if err != nil {
+				return err
+			}
+		}
 
 		for _, name := range names {
 			p := filepath.Join(path, name)
-			err = readDir(b, prefix, p)
+			
+			err = readDir(b, prefix, p, &path)
 			if err != nil {
 				return err
 			}
@@ -93,6 +113,17 @@ func readDir(b *bundle.Writer, prefix, path string) error {
 		return nil
 
 	} else {
+
+		if parentpath != nil {
+			err = b.WriteQuadIri(
+				*parentpath,
+				"tag:mildred.fr,2015-05:SmartWeb#child",
+				path,
+				*parentpath)
+			if err != nil {
+				return err
+			}
+		}
 
 		var firstBytes [512]byte
 		io.ReadFull(f, firstBytes[:])
