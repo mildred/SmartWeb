@@ -78,7 +78,7 @@ func isSubUrl(base, u *url.URL) bool {
 
 func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, error) {
 	graphsRelUri := make(map[string]*url.URL)
-	var statements string
+	var ins inserter
 	var logs []string
 	for value := range ch {
 		st, is_st := value.(*nquads.Statement)
@@ -91,7 +91,6 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 			graph, _ := st.Subject()
 			relUri, _, _, _ := st.ObjectLiteral()
 			
-			//graphUri := baseUri.ResolveReference(url.Parse(relUri))
 			graphUri, err := baseUri.Parse(relUri)
 			if err != nil {
 				logs = append(logs, fmt.Sprintf(
@@ -106,9 +105,7 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 				continue
 			}
 			graphsRelUri[graph] = graphUri
-			statements += sparql.MakeQuery(
-				"DROP SILENT GRAPH %1u\n",
-				graphUri)
+			ins.deleteGraph(graphUri)
 		} else if graphUri, ok := graphsRelUri[graph]; has_graph && ok && graphUri != nil {
 			var s, p, o string
 			switch s_s, s_t := st.Subject(); s_t {
@@ -138,9 +135,7 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 					}
 					break
 			}
-			statements += sparql.MakeQuery(
-				"INSERT DATA { GRAPH %1u { %2q %3q %4q } }\n",
-				graphUri, s, p, o)
+			ins.insertData(s, p, o, sparql.IRILiteral(graphUri.String()))
 		} else {
 			if ! has_graph {
 				logs = append(logs, fmt.Sprintf(
@@ -152,5 +147,93 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, []string, 
 			
 		}
 	}
+	statements := ins.terminate()
 	return statements, logs, nil
+}
+
+
+type inserter struct {
+	statements string
+	inDataStatement bool
+	currentGraph string
+	currentSubject string
+	currentPredicate string
+	inObject bool
+}
+
+func (i *inserter) closeObject(suffix string) {
+	if i.inObject {
+		i.statements += "," + suffix
+		i.inObject = false
+	}
+}
+
+func (i *inserter) closePredicate(suffix string) {
+	if i.currentPredicate != "" {
+		i.statements += " ;" + suffix
+		i.currentPredicate = ""
+		i.inObject = false
+	}
+}
+
+func (i *inserter) closeSubject(suffix string) {
+	if i.currentSubject != "" {
+		i.statements += " ." + suffix
+		i.currentSubject = ""
+		i.currentPredicate = ""
+		i.inObject = false
+	}
+}
+
+func (i *inserter) closeGraph(suffix string) {
+	if i.currentGraph != "" {
+		i.closeSubject("");
+		i.statements += " }" + suffix
+		i.currentGraph = ""
+	}
+}
+
+func (i *inserter) closeData(suffix string) {
+	if i.inDataStatement {
+		i.closeGraph("");
+		i.statements += " }" + suffix
+		i.inDataStatement = false
+	}
+}
+
+func (i *inserter) deleteGraph(graphUri *url.URL) {
+	i.closeData("\n")
+	i.statements += sparql.MakeQuery(
+		"DROP SILENT GRAPH %1u\n",
+		graphUri)
+}
+
+func (i *inserter) insertData(encSubj, encPred, encObj, encGraph string) {
+	if ! i.inDataStatement {
+		i.statements += "INSERT DATA {\n"
+		i.inDataStatement = true
+	}
+	if i.currentGraph != encGraph {
+		i.closeGraph("\n")
+		i.statements += " GRAPH " + encGraph + " {\n"
+		i.currentGraph = encGraph
+	}
+	if i.currentSubject != encSubj {
+		i.closeSubject("\n")
+		i.statements += "  " + encSubj + " "
+		i.currentSubject = encSubj
+	}
+	if i.currentPredicate != encPred {
+		i.closePredicate("\n   ")
+		i.statements += encPred + " "
+		i.currentPredicate = encPred
+	}
+	i.closeObject("\n    ")
+	i.statements += encObj
+	i.inObject = true
+}
+
+func (i *inserter) terminate() string {
+	i.closeData("")
+	return i.statements
 }
