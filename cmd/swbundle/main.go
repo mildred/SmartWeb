@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"net/http"
 	"io"
+	"mime"
+	"strings"
 )
 
 func main() {
@@ -128,7 +130,17 @@ func readDir(b *bundle.Writer, prefix, path string, parentpath *string) error {
 		mimeType := http.DetectContentType(firstBytes[:])
 		
 		// FIXME use base URI provided in args
-		// FIXME detect more text/* content types based on extension
+		
+		simpleMimeType, _, _ := mime.ParseMediaType(mimeType)
+		if simpleMimeType == "text/plain" {
+			ext := strings.ToLower(filepath.Ext(path))
+			//log.Printf("Detect mime type for %s: %s\n", ext, mimeType)
+			switch ext {
+				case ".css": mimeType = strings.Replace(mimeType, "plain", "css", 1)
+				case ".js":  mimeType = strings.Replace(mimeType, "plain", "javascript", 1)
+			}
+		}
+		
 		fullUri := path
 		err := b.InsertFile(fullUri, path, f)
 		if err != nil {
