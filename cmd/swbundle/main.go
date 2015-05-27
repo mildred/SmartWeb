@@ -13,8 +13,6 @@ import (
 
 func main() {
 	// FIXME support index file and insert it in graph
-	// FIXME add sw:child
-	// FIXME detect content type
 	baseUri := flag.String("base", "", "Base URI")
 	flag.Parse()
 	bundleFile := flag.Arg(0)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"encoding/json"
 	"net/url"
+	"io/ioutil"
 )
 
 type Client struct {
@@ -132,7 +133,12 @@ func (c *Client) Update(query string) (*Response, error) {
 	}
 	
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.New(resp.Status)
+		content, _ := ioutil.ReadAll(resp.Body)
+		if len(content) == 0 {
+			return nil, errors.New(resp.Status)
+		} else {
+			return nil, errors.New(string(content))
+		}
 	}
 	
 	return nil, nil
