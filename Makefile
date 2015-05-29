@@ -41,9 +41,17 @@ install-ckeditor: edit.appcache saveurl/js/extensions.min.js
 	./smart-copy.sh ckeditor-build/ckeditor web/localhost:8000.host.dir/ckeditor.dir
 	./smart-copy.sh saveurl web/localhost:8000.host.dir/ckeditor.dir/plugins.dir/saveurl.dir
 
-install-edit:
+cmd/swbundle/swbundle:
+	cd cmd/swbundle && go build .
+.PHONY: cmd/swbundle/swbundle
+
+edit.web: cmd/swbundle/swbundle
 	mkdir -p edit
 	cp -R ckeditor-build/ckeditor edit
 	cp -R saveurl edit/ckeditor/plugins
 	cp edit.html edit
 	#cp edit.appcache edit
+	printf %s "application/smartweb-bundle+zip" >mimetype
+	#rm -f $@
+	#zip -Z store $@ mimetype
+	cmd/swbundle/swbundle "$@" edit

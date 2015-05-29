@@ -1,23 +1,111 @@
 SmartWeb2
 =========
 
-    java -Dinfo.aduna.platform.appdata.basedir=/home/mildred/openrdf-sesame-store -jar ~/Inbox/winstone-boot-1.7.0.jar --webappsDir=Inbox/openrdf-sesame-2.8.3/war --port=8080
-    
-    go build ./cmd/smartweb2 && ./smartweb2 --sesame-port 8080
+Smart web server that will understands HTML and handlme the HTTP protocol in a
+smart way. Under the hood, RDF is used to store metadata about each URI that can
+be queried. Future versions will also extract some metadata from stored HTML
+documents and will make it possible to search for them using SPARQL.
 
-SmartWeb
-========
+The end goal is to have a generic server implementation for websites. web
+applications that might require special API from the server are not in scope.
+But anything like a blog, an index page for a blog, a list of comments or
+talkbacks should be possible.
 
-Smart web server that understands HTML and extra HTTP methods. The content model
-is composed of entries. Each entry can have :
+SmartWeb also store backlinks to URI. When a request is made, the Referer header
+is stored in the RDF database. Future versions will try to find a SPARQL/RDF
+endpoint from the referer URL (in case it is also a SmartWeb implementation) and
+will store more meta information about this backlings. The goal is to expose
+this information to the pages and they should make use of it. Thisis the basic
+feature that would be used to implement comments, talkbacks, index pages and so
+on.
 
-* a data, series of bytes stored in a file
-* a meta entry associated with the entry
-* a directory, list of children entries
+Getting started
+---------------
 
-This is very powerful, especially considering that the meta entries can
-themselves have meta entries of their own, and directories and non-directories
-entry are separate.
+First, build smartweb:
+
+	go build ./cmd/smartweb2
+
+Then, run the Blazegraph database:
+
+	java -server -Xmx4G -jar bigdata-bundled.jar
+
+Go to the web interface, and create a namespace called `smartweb` for Storing
+quads. You can optionally enable full text indexing. If you did all that, you
+should be able to execute smartweb this way:
+
+	./smartweb2 --noacl --sparql=http://localhost:9999/bigdata/namespace/smartweb/sparql
+
+Installing the page editing application
+---------------------------------------
+
+Build the `edit.web` bundle that contains the web application:
+
+    make edit.web
+
+Then, insert this application in smartweb (you can chane the URL you insert the
+application in):
+
+    curl -v -X POST \
+	  --data-binary @edit.web \
+	-H 'Content-Type: application/smartweb-bundle+zip' \
+	http://localhost:8000/edit/
+
+This can take some time, at least a minute. Currently, a bug prevents the HTTP
+response from being received, this is investigated. You should see in the
+smartweb logs a message like this:
+
+	2015/05/29 07:30:36 67.351099ms to download the bundle
+	17.26946686s to read the graphs and make the SPARQL query
+	2.114954285s to copy the files in the bundle
+	33.11796985s to run the SPARQL Update query
+	
+	2015/05/29 07:30:36 POST Bundle: updated RDF
+
+You can then go to http://localhost:8000/edit/edit.html
+
+Security and privacy for the client
+===================================
+
+Security and privacy of the client is important.
+
+  * The Etag header is tagged with a hash function that the client can check
+    against the content. This can be used to implement caching that do not leak
+    too much information to the server.
+
+  * Ideally, javascript would be disabled on the web, and HTML imports would be
+    used to import trusted (from the client point of view) web components that
+    enable dynamic processing. This should be done in the client.
+	
+	This could be implemented by disabling javascript over HTTP/HTTPS and have
+	a special URI scheme indexing files by their content hash, with only
+	whitelisted components having javascript enabled. NoScript should be able to
+	do that.
+
+SmartWeb Details
+================
+
+Bundles
+-------
+
+The server should allow whole hierarchies to be exported and imported. Export is
+not yet implemented, but import can be performed using the HTTP POST method.
+HTTP PUT should also be possible (in which case, all sub-resources would be
+deleted before recursively).
+
+Bundles are ZIP files that contain a file stored first in the archive, called
+`mimetype`, stored with no compression and containing
+`application/smartweb-bundle+zip`. The file should also contains a RDF quads
+serialization in `graphs.nq` and all the files of the hierarchy indexed by their
+content hash. All information about the tree structure of the bundle is stored
+in RDF graphs.
+
+Bundles can be looked up and created locally using the utility in
+`cmd/swbundle`:
+
+* `swbundle BUNDLE` shows the content of the bundle
+* `swbundle BUNDLE DIR` creates the bundle with all files contained in `DIR`
+  (without including `DIR` in the hierarchy)
 
 TLS Connections
 ---------------
@@ -38,51 +126,6 @@ use:
 
 Then import the `client-cert.p12` into Firefox
 
-Entries URI
------------
-
-Each entry can be accessed using a unique request URI. It is composed as
-follows:
-
-* `/` is the root entry
-* `/entry` is a file `entry` stored under the root entry. It cannot contains children
-* `/entry/` is a directory entry `entry/` stored under the root entry. It contains both data and optional children
-* `<URI>?meta=/` is the root meta entry relative to `<URI>`
-* `<URI>?meta=/headers/Content-Type` is a file meta entry relative to `<URI>`
-* `<URI>?meta=/a&meta=/b` is a meta entry `/b` assigned to the meta entry `/a` itself assigned to `<URI>`
-
-Disk format
------------
-
-Storing these entries on disk is done using normal files and directories. Each
-filesystem entry has a suffix indicating its type. A single SmartWeb entry can
-be composed of more than one file on disk, but all those filesystem entries
-share the exact same prefix path.
-
-If a SmartWeb entry is stored on disk using the path prefix `~/web/` (this will
-generally be the root entry):
-
-* the data part of that entry will be stored at `~/web/data`
-* the meta entry will be stored at prefix `~/web/meta` (the metadata will be at
-  `~/web/metadata` and the child entries will be at
-  `~/web/metadir/<child-name>.`)
-* the child entries will be stored with prefix `~/web/<child-name>.` (because
-  `~/web/` is already a directory)
-
-Now, an entry `e` stored under the above entry will have:
-
-* its data part in `~/web/e.data`
-* its meta part under `~/web/e.meta` (the metadata in `~/web/e.metadata` and
-  meta children in `~/web/e.metadir/<child-name>.`)
-* its children borrowed from entry `e/` (see below)
-
-Now, an entry `e/` stored under the first described entry will have:
-
-* its data part in `~/web/e.dir/data`
-* its meta part under `~/web/e.dir/meta` (the metadata in `~/web/e.dir/metadata`
-  and meta children in `~/web/e.dir/metadir/<child-name>.`)
-* its children stored under prefix `~/web/e.dir/<child-name>.`
-
 HTTP Methods
 ------------
 
@@ -97,11 +140,10 @@ The standard HTTP methods implemented for these entries are:
 * `PUT` set the entry to the data contained in the request, and reset the header
   meta-entries. The `Content-Type` header meta-entry is set from the request.
 
+* `POST` accepts a bundle and insert it in at the given point.
+
 * `DELETE` removes an entry with its meta entry and its children. If the request
   path end with `/`, the entry's children will be removed as well.
-
-Most notably, the HTTP `POST` request is not implemented because it has no clear
-semantic.
 
 ### Future Ideas ###
 
@@ -134,8 +176,11 @@ semantic.
   or `204 No Content` if the request was successfull.
 
 
-Free Comments about RDF
------------------------
+Backlinks (ideas only)
+----------------------
+
+NOTE: in smartweb2, the `?rdf` suffix is no longer there. The graph and the page
+share the same URI.
 
 <blog-post.html> contains {
   <blog-post.html> a            html:Document ;
@@ -159,8 +204,8 @@ in other-store.n3 we have: <unvalidated-comment.html> talk:about <blog-post.html
 in unvalidated-comment2.html we have: <link rel="talk:about" src="blog-post.html"/>
 
 
-About Index Pages
------------------
+About Index Pages (ideas)
+-------------------------
 
 Have a HTML element that does templating based on RDF:
 
@@ -172,62 +217,10 @@ See xul:template reference: http://www-archive.mozilla.org/rdf/doc/xul-template-
 See promising research in: http://referaat.cs.utwente.nl/conference/10/paper/6949/rdf-integration-in-html-5-web-pages.pdf
 Or use web components http://webcomponents.org/articles/introduction-to-shadow-dom/
 
-Authentication
---------------
+Authentication (incomplete)
+---------------------------
 
-Only Digest authentication is implemented for the moment. Authentication is
-configured using meta entries, and is inherited from parent directories.
-
-Multiple authentication realms can be defined. A realm is a group of users like
-*Normal Users*, *Editors* or *Administrators*. When logging-in, the user agent
-is responsible to choose the correct realm. When configuring access policies,
-different realms can have different permissions.
-
-The following entries can be used to configure the authentication and
-permissions:
-
-* `?meta=/auth/<realm>/`: Defines a realm with identifier `<realm>`. Only if
-  `<realm>` is not `anonymous`.
-* `?meta=/auth/<realm>/realm`: The realm name provided to the user agent
-* `?meta=/auth/<realm>/Digest.users/<username>`: The password for `<username>`
-  in `<realm>`
-* `?meta=/auth/<realm>/*.perm`: Permissions for users of the specified realm
-* `?meta=/auth/<realm>/inherit`: If present, additional settings for this realm
-  will be searched in parent directories.
-* `?meta=/auth/anonymous/*.perm`: Permissions for anonymous users
-* `?meta=/auth/inherit`: If present, additional realms will be searched in
-  parent directories. If `?meta=/auth/` does not exists, this is implicit.
-
-The permissions files `*.perm` are looked-up depending on the HTTP method. When
-performing a `DELETE` request on `/dir/file`, the following files will be
-searched:
-
-* `/dir/file?meta=/auth/<realm>/DELETE.perm`
-* `/dir/file?meta=/auth/<realm>/default.perm`
-* if `/dir/file?meta=/auth/<realm>/inherit` does not exist, search is stopped there
-* `/dir/?meta=/auth/<realm>/DELETE.perm`
-* `/dir/?meta=/auth/<realm>/default.perm`
-* if `/dir/?meta=/auth/<realm>/inherit` does not exist, search is stopped there
-* `/?meta=/auth/<realm>/DELETE.perm`
-* `/?meta=/auth/<realm>/default.perm`
-
-The first entry found will be read. If it contains the string `"allow"`
-(5 bytes, no carriage return allowed) the access will be granted. Else, the file
-is supposed to contain `"deny"` (4 bytes).
-
-If no perm entry is found, access will be denied.
-
-### Future Work ###
-
-Work should be performed in the current browsers to allow the following
-functions:
-
-* Allow to choose different realms if the server provides many
-* Allow log-out
-* Clearly show in the browser chrome if the user is logged-in
-* Make sure the domain attribute of the digest authentication is honored
-
-The server could be made to play well with user agents by only showing a single
-realm, and check credentials against all.
-
-Ed25519 authentication should be implemented both server-side and client-side.
+Authentication is done via client-side certificates. The server can generate one
+for you if you pass `?keygen` on the request URI. ACL can specify rights based
+on those certificates, they are not required to be signed by the server private
+key.

@@ -15,9 +15,15 @@ import (
 	"strings"
 	"crypto/sha1"
 	"encoding/hex"
+	"log"
+	"time"
 )
 
 func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, req *http.Request) {
+	
+	start_time := time.Now()
+	log.Println("POST Bundle")
+	
 	f, err := ioutil.TempFile(server.Root, "temp:")
 	if err != nil {
 		handleError(res, 500, err.Error())
@@ -30,6 +36,9 @@ func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, 
 		handleError(res, 500, err.Error())
 		return
 	}
+	
+	after_download := time.Now()
+	duration_download := after_download.Sub(start_time)
 	
 	_, err = f.Seek(0, 0)
 	if err != nil {
@@ -48,11 +57,18 @@ func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, 
 		return
 	}
 	
+	before_read_graph := time.Now()
+	log.Println("POST Bundle: read Graph")
+	
 	statements, wantedHashes, logs, err := makeStatements(u, b.GraphStatements(0))
 	if err != nil {
 		handleError(res, 400, err.Error())
 		return
 	}
+	
+	after_read_graph := time.Now()
+	duration_statements_creation := after_read_graph.Sub(before_read_graph)
+	log.Println("POST Bundle: read ZIP file")
 	
 	for _, zipfile := range b.Reader.File {
 		if strings.HasPrefix(zipfile.Name, "sha1:") {
@@ -95,14 +111,36 @@ func (server SmartServer) handlePOSTBundle(u *url.URL, res http.ResponseWriter, 
 		}
 	}
 	
+	after_copy_files := time.Now()
+	duration_copy_files := after_copy_files.Sub(after_read_graph)
+	log.Println("POST Bundle: written all files")
+	
+	log.Println(strings.Join(logs, "\n"))
+	
 	_, err = server.dataSet.Update(string(statements))
 	if err != nil {
 		handleError(res, 500, err.Error())
 		return
 	}
-
-	res.WriteHeader(http.StatusOK)	
-	res.Write([]byte(strings.Join(logs, "\n")))
+	
+	after_update := time.Now()
+	duration_update := after_update.Sub(after_copy_files)
+	
+	duration_report := fmt.Sprintf(
+		"%v to download the bundle\n" +
+		"%v to read the graphs and make the SPARQL query\n" +
+		"%v to copy the files in the bundle\n" +
+		"%v to run the SPARQL Update query\n",
+		duration_download, duration_statements_creation, duration_copy_files, duration_update)
+	
+	log.Println(duration_report)
+	
+	log.Println("POST Bundle: updated RDF")
+	
+	res.WriteHeader(http.StatusOK)
+	n, err := res.Write([]byte(duration_report + "\n" + strings.Join(logs, "\n")))
+	
+	log.Printf("POST Bundle: response %d %v\n", n, err)
 }
 
 func getBundleSHA1(zipfile *zip.File) (string, error) {
@@ -143,7 +181,7 @@ func isSubUrl(base, u *url.URL) bool {
 
 func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string]bool, []string, error) {
 	graphsRelUri := make(map[string]*url.URL)
-	var ins inserter
+	var drop, ins inserter
 	var logs []string
 	var wantedHashes map[string]bool = make(map[string]bool)
 	for value := range ch {
@@ -171,7 +209,7 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string
 				continue
 			}
 			graphsRelUri[graph] = graphUri
-			ins.deleteGraph(graphUri)
+			drop.deleteGraph(graphUri)
 		} else if graphUri, ok := graphsRelUri[graph]; has_graph && ok && graphUri != nil {
 			if st.Predicate() == SwHash {
 				hash, is_hash := st.ObjectIri()
@@ -219,12 +257,19 @@ func makeStatements(baseUri *url.URL, ch <-chan interface{}) (string, map[string
 			
 		}
 	}
-	statements := ins.terminate()
+	statements := drop.terminate()
+	if statements != "" {
+		statements += " ;\n"
+	} else {
+		statements += "\n"
+	}
+	statements += ins.terminate()
 	return statements, wantedHashes, logs, nil
 }
 
 
 type inserter struct {
+	drop_statements string
 	statements string
 	currentStatement string
 	currentGraph string
