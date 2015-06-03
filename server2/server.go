@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"github.com/mildred/SmartWeb/bundle"
 	"github.com/mildred/SmartWeb/sparql"
 	"io"
 	"io/ioutil"
@@ -17,6 +18,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"mime"
 )
 
 var SmartWeb_hasReferer, _ = url.Parse("tag:mildred.fr,2015-05:SmartWeb#hasReferer")
@@ -220,11 +222,28 @@ func (server SmartServer) handleDELETE(u *url.URL, res http.ResponseWriter, req 
 	}()
 }
 
+func (server SmartServer) handlePOSTForm(u *url.URL, res http.ResponseWriter, req *http.Request) {
+	err := req.ParseForm();
+	if err != nil {
+		handleError(res, 400, err.Error())
+		return;
+	}
+	
+	if req.Form.Get("query") != "" {
+		server.handleSPARQLQuery(u, res, req, req.Form);
+	} else {
+		handleError(res, 400, "Unknown form data")
+	}
+}
+
 func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	curUrl := (&url.URL{
 		Scheme: "http", // Ignore https to avoid breaking links
 		Host:   req.Host,
 	}).ResolveReference(req.URL)
+	
+	res.Header().Set("Access-Control-Allow-Origin", "*")
+	res.Header().Set("Access-Control-Allow-Method", "*")
 
 	log.Println(req.Method + " " + curUrl.String())
 
@@ -279,11 +298,24 @@ func (server SmartServer) ServeHTTP(res http.ResponseWriter, req *http.Request) 
 	}()
 
 	if req.Method == "GET" || req.Method == "HEAD" {
-		server.handleGET(curUrl, res, req)
+		if curUrl.Query().Get("query") != "" {
+			server.handleGETSPARQLQuery(curUrl, res, req)
+		} else {
+			server.handleGET(curUrl, res, req)
+		}
 	} else if req.Method == "PUT" {
 		server.handlePUT(curUrl, res, req)
 	} else if req.Method == "POST" {
-		server.handlePOSTBundle(curUrl, res, req)
+		mediatype, _, _ := mime.ParseMediaType(req.Header.Get("Content-Type"));
+		if mediatype == bundle.MimeType {
+			server.handlePOSTBundle(curUrl, res, req)
+		} else if mediatype == "application/sparql-query" {
+			server.handlePOSTSPARQLQuery(curUrl, res, req)
+		} else if mediatype == "application/x-www-form-urlencoded" {
+			server.handlePOSTForm(curUrl, res, req)
+		} else {
+			res.WriteHeader(400)
+		}
 	} else if req.Method == "DELETE" {
 		server.handleDELETE(curUrl, res, req)
 	} else {

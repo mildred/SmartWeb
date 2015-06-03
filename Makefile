@@ -55,3 +55,8 @@ edit.web: cmd/swbundle/swbundle
 	#rm -f $@
 	#zip -Z store $@ mimetype
 	cmd/swbundle/swbundle "$@" edit
+
+webcomponents-lite.js:
+	git clone http://github.com/WebComponents/webcomponentsjs.git
+	cd webcomponentsjs && npm install && npm install gulp && ./node_modules/.bin/gulp build
+	cp webcomponentsjs/dist/$@ $@

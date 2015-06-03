@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:template="tag:mildred.fr,2015-05:template#" xmlns:ds="tag:mildred.fr,2015-05:dataSource#">
+<head>
+    <meta charset="utf-8"/>
+    <script src="webcomponents-lite.js"></script>
+    <link rel="import" href="sparql-query-data.html"/>
+    <link rel="import" href="namespaces.html"/>
+</head>
+<body>
+    <!-- TODO: declare this custom element using xmlns instead of webcomponent dash prefix and have a javascript library to translate this to HTML web components -->
+    <ds-sparql-query src="http://localhost:9999/bigdata/namespace/smartweb/sparql" id="query">
+        SELECT *
+        WHERE { ?s ?p ?o }
+    </ds-sparql-query>
+
+    <data-template for="query" format="application/sparql-results+json" variable="data">
+        <table>
+            <thead>
+                <tr>
+                    <data-loop select="data.head.vars" variable="head">
+                        <th><data-value value="head"/></th>
+                    </data-loop>
+                </tr>
+            </thread>
+            <tbody>
+                <data-loop select="data.results.bindings" variable="row">
+                    <tr>
+                        <data-loop select="data.head.vars" variable="head">
+                            <td><data-value value="row[head].value"/></td>
+                        </data-loop>
+                    </tr>
+                </data-loop>
+            </tbody>
+        </table>
+    </data-template>
+
+    <table template:for="query" template:type="application/sparql-results+json" template:variable="data">
+        <tr>
+            <th template:select="data.head.vars" template:variable="head">
+                <template:value select="head"/>
+            </th>
+        </tr>
+        <tr template:select="data.results.bindings" template:variable="row">
+            <td template:select="data.head.vars" template:variable="head">
+                <template:value select="row[head].value"/>
+            </td>
+        </tr>
+    </table>
+    <script>
+        console.log(document.body.firstElementChild.data)
+    </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:template="tag:mildred.fr,2015-05:template#" xmlns:ds="tag:mildred.fr,2015-05:dataSource#">
+<head>
+    <meta charset="utf-8"/>
+    <script src="webcomponentsjs/dist/HTMLImports.js"/>
+    <script src="XMLBinding.js"/>
+    <script src="template.js"/>
+    <link rel="import" href="sparql-query-data.html"/>
+<!--
+    <script src="webcomponents-lite.js"></script>
+-->
+</head>
+<body>
+    <!-- TODO: declare this custom element using xmlns instead of webcomponent dash prefix and have a javascript library to translate this to HTML web components -->
+    <ds:sparql-query src="http://localhost:8000/" id="query" type="application/sparql-results+json">
+        SELECT *
+        WHERE { ?s ?p ?o }
+    </ds:sparql-query>
+
+    <template id="table-template">
+        <!-- use shadow dom style templating -->
+        <table template:variable="data">
+            <tr>
+                <th template:select="data.head.vars" template:variable="head">
+                    <template:value select="head"/>
+                </th>
+            </tr>
+            <tr template:select="data.results.bindings" template:variable="row">
+                <td template:select="data.head.vars" template:variable="head">
+                    <template:value select="row[head].value"/>
+                </td>
+            </tr>
+        </table>
+    </template>
+    
+    <template:instance template="table-template" data-set="query"/>
+
+    <script>
+        //console.log(document.body.firstElementChild.data)
+        //console.log(document.body.children[2].compute())
+
+        /*
+        function evaluateXPath(aNode, aExpr) {
+            var xpe = new XPathEvaluator();
+            var nsResolver = xpe.createNSResolver(aNode.ownerDocument == null ?
+                aNode.documentElement : aNode.ownerDocument.documentElement);
+            var result = xpe.evaluate(aExpr, aNode, nsResolver, 0, null);
+            console.log(result)
+            if (result.resultType == 1) {
+                return result.numberValue
+            } else if (result.resultType == 2) {
+                return result.stringValue
+            } else if (result.resultType == 3) {
+                return result.booleanValue
+            }
+            var found = [];
+            var res;
+            while (res = result.iterateNext())
+                found.push(res);
+            return found;
+        }
+        */
+
+        //console.log(evaluateXPath(document, "//@*[namespace-uri(.)='']"))
+        //console.log(evaluateXPath(document, "namespace-uri(//@template:for)"))
+        //console.log(evaluateXPath(document, "//@*[namespace-uri(.)='tag:mildred.fr,2015-05:template#'][local-name(.)='for']"))
+        //console.log(evaluateXPath(document, "//@*[namespace-uri(.)='tag:mildred.fr,2015-05:template#'][local-name(.)='variable']"))
+    </script>
+</body>
+</html>

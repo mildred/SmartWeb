@@ -33,6 +33,27 @@ type BindingValue struct {
 	Value string `json:"value"`
 }
 
+type SparqlError struct {
+	string
+	statusCode int
+}
+
+func (sqe *SparqlError) Error() string {
+	return sqe.string
+}
+
+func newSparqlError(statusCode int, err string) error {
+	return &SparqlError{ err, statusCode }
+}
+
+func SparqlErrorStatus (e error) int {
+	if sqe, ok := e.(*SparqlError); ok {
+		return sqe.statusCode
+	} else {
+		return 0
+	}
+}
+
 func NewClient(query, update string) *Client {
 	return &Client {
 		QueryUrl: query,
@@ -75,9 +96,18 @@ func (c *Client) AddQuad(context, subject, predicate, object interface{}) error 
 	}
 }
 
+func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	return c.http.Do(req)
+}
+
 func (c *Client) Select(query string) (*Response, error) {
+	return c.SelectNamedGraph(query, []string{})
+}
+
+func (c *Client) SelectNamedGraph(query string, namedGraph []string) (*Response, error) {
 	vals := url.Values{
 		"query": []string{query},
+		"named-graph-uri": namedGraph,
 	}
 	
 	req, err := http.NewRequest("POST", c.QueryUrl, bytes.NewReader([]byte(vals.Encode())))

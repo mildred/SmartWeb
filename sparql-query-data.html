@@ -1,0 +1,125 @@
+<html>
+<head>
+<script src="XMLBinding.js"></script>
+<script>
+(function(){
+
+    // TODO: declare this web component with a xmlns prefix URI
+
+    var proto = Object.create(HTMLElement.prototype, {
+        /*data: {
+            get: function(){
+                return this._compute()
+            }
+        }*/
+    })
+
+    /*
+    proto._compute = function(){
+        var uri = this.attributes.src.value + "?query=" + encodeURIComponent(this.textContent)
+        if(this._last_uri === uri) {
+            return this._data;
+        }
+        this._last_uri = uri
+        this._data = {
+            head: {
+                vars: [ "a", "b" ]
+            },
+            results: {
+                bindings: [
+                    {
+                        a: { value: "A1" },
+                        b: { value: "B1" }
+                    },{
+                        a: { value: "A2" },
+                        b: { value: "B2" }
+                    },{
+                        a: { value: "A3" },
+                        b: { value: "B3" }
+                    }
+                ]
+            }
+        }
+        this.ready = true;
+        this.dispatchEvent(new Event("change"))
+        return this._data
+    }
+    */
+
+    proto.refresh = function(){
+        this.ready = false;
+        this._xhr.open("POST", this.getAttribute('src'), true);
+        this._xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
+        this._xhr.setRequestHeader("Accept", this.getAttribute('type'))
+        this._xhr.send("query=" + encodeURIComponent(this.textContent));
+    }
+
+    proto._onreadystatechange = function(){
+        this.ready = (this._xhr.readyState == 4);
+        if(!this.ready) return;
+
+        this.data = JSON.parse(this._xhr.response)
+        console.log(this.data);
+        this.dispatchEvent(new Event("data"))
+    }
+
+    proto.createdCallback = function() {
+        this._xhr = new XMLHttpRequest();
+        this._xhr.onreadystatechange = this._onreadystatechange.bind(this);
+        this.refresh();
+        this.ready = false;
+        this.data = undefined;
+/*
+        this.data = {
+            head: {
+                vars: [ "a", "b" ]
+            },
+            results: {
+                bindings: [
+                    {
+                        a: { value: "A1" },
+                        b: { value: "B1" }
+                    },{
+                        a: { value: "A2" },
+                        b: { value: "B2" }
+                    },{
+                        a: { value: "A3" },
+                        b: { value: "B3" }
+                    }
+                ]
+            }
+        }
+        this.dispatchEvent(new Event("data"))
+        */
+        //this._compute();
+    }
+
+    /*
+    proto.createdCallback = function() {
+        console.log("created");
+    }
+
+    proto.attachedCallback = function() {
+        console.log("attached");
+    }
+
+    proto.attributeChangedCallback = function(attrName, oldVal, newVal) {
+        console.log("attributeChanged");
+        console.log(attrName);
+        console.log(oldval);
+        console.log(newVal);
+    }
+    */
+
+    var SPARQLQueryData = document.registerElementNS("tag:mildred.fr,2015-05:dataSource#", "sparql-query", {
+        prototype: proto
+    });
+})()
+</script>
+<style>
+    sparql-query-data{
+        display: none;
+    }
+</style>
+</head>
+</html>
