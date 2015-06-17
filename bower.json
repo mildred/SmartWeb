@@ -1,0 +1,19 @@
+{
+  "name": "SmartWeb",
+  "version": "0.0.0",
+  "homepage": "https://github.com/mildred/SmartWeb",
+  "authors": [
+    "Mildred Ki'Lya <mildred-pub.git@mildred.fr>"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "devDependencies": {
+    "qunit": "~1.18.0"
+  }
+}
