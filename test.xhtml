@@ -13,8 +13,16 @@
 <body>
     <!-- TODO: declare this custom element using xmlns instead of webcomponent dash prefix and have a javascript library to translate this to HTML web components -->
     <ds:sparql-query src="http://localhost:8000/" id="query" type="application/sparql-results+json">
+    <![CDATA[
+        PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
         SELECT *
-        WHERE { ?s ?p ?o }
+        WHERE {
+            GRAPH ?g {
+                ?s a sw:ACL; ?p ?o .
+            }
+        }
+        LIMIT 100
+    ]]>
     </ds:sparql-query>
 
     <template id="table-template">
@@ -32,7 +40,7 @@
             </tr>
         </table>
     </template>
-    
+
     <template:instance template="table-template" data-set="query"/>
 
     <script>

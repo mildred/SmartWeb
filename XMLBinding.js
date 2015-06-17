@@ -68,9 +68,9 @@ function lookupPrefix(document, namespaceURI){
         var attrs = document.documentElement.attributes;
         for(var i = 0; prefix === null && i < attrs.length; ++i) {
             if (attrs[i].value === namespaceURI &&
-                attrs[i].localName.startsWith("xmlns:"))
+                attrs[i].name.startsWith("xmlns:"))
             {
-                prefix = attrs[i].localName.substring(6)
+                prefix = attrs[i].name.substring(6)
             }
         }
     }
@@ -308,4 +308,138 @@ function convertDocument(document){
 }
 
 convertDocument(document);
+
+if (document.contentType == "text/html") {
+    function elemPrefix(elem, namespaceURI) {
+        var prefix = elem.ownerDocument.lookupPrefix(namespaceURI);
+        if (prefix !== "" || prefix !== null) {
+            prefix = prefix + ":"
+        }
+        return prefix
+    }
+
+    function elemAttrPrefix(elem, namespaceURI) {
+		if(namespaceURI === "") {
+			return "";
+		} else {
+			return elemPrefix(elem, namespaceURI);
+		}
+    }
+
+    Node.prototype.lookupNamespaceURI = function(prefix){
+        return this.ownerDocument.lookupNamespaceURI(prefix);
+    }
+    Document.prototype.lookupNamespaceURI = function(prefix){
+        return this.documentElement.getAttribute("xmlns:" + prefix);
+    }
+
+    Node.prototype.lookupPrefix = function(namespaceURI){
+		var doc = this;
+		if(! (this instanceof Document)) {
+			doc = this.ownerDocument;
+		}
+		
+		if(!doc.documentElement) {
+			return null;
+		}
+
+        var attrs = doc.documentElement.attributes;
+        var prefix = null
+        for(var i = 0; prefix === null && i < attrs.length; ++i) {
+            if (attrs[i].value === namespaceURI &&
+                attrs[i].name.startsWith("xmlns:"))
+            {
+                prefix = attrs[i].name.substring(6)
+            }
+        }
+        return prefix;
+    }
+
+    Element.prototype.getAttributeNS = function(ns, attr){
+        return this.getAttribute(elemAttrPrefix(this, ns) + attr);
+    };
+    Element.prototype.getAttributeNodeNS = function(ns, attr){
+        return this.getAttributeNode(elemAttrPrefix(this, ns) + attr);
+    };
+    Element.prototype.getElementsByTagNameNS = function(ns, tagName){
+        return this.getElementsByTagName(elemPrefix(this, ns) + tagName);
+    };
+    Element.prototype.hasAttributeNS = function(ns, attr){
+        return this.hasAttribute(elemAttrPrefix(this, ns) + attr);
+    };
+    Element.prototype.removeAttributeNS = function(ns, attr){
+        return this.removeAttribute(elemAttrPrefix(this, ns) + attr);
+    };
+    Element.prototype.setAttributeNS = function(ns, attr, value){
+        return this.setAttribute(elemAttrPrefix(this, ns) + attr, value);
+    };
+    Element.prototype.setAttributeNodeNS = function(ns, attr, node){
+        return this.setAttributeNode(elemAttrPrefix(this, ns) + attr, node);
+    };
+	
+	var tagNameProp = Object.getOwnPropertyDescriptor(Element.prototype, "tagName");
+	var tagNameGet = tagNameProp.get;
+
+	var localNameProp = Object.getOwnPropertyDescriptor(Node.prototype, "localName");
+	var localNameGet = localNameProp.get;
+
+	var namespaceURIProp = Object.getOwnPropertyDescriptor(Node.prototype, "namespaceURI");
+	var namespaceURIGet = namespaceURIProp.get;
+	
+	document.localNameGet = localNameGet;
+	document.namespaceURIGet = namespaceURIGet;
+	document.tagNameGet = tagNameGet;
+
+	tagNameProp.get = function(){
+		var locName = localNameGet.call(this);
+		var i = locName.indexOf(":");
+		if (i >= 0) {
+			var prefix = locName.substr(0, i);
+			var suffix = locName.substr(i+1);
+			if (this.lookupNamespaceURI(prefix) !== null) {
+				return suffix;
+			}
+		}
+		return tagNameGet.call(this);
+	};
+	
+	localNameProp.get = function(){
+		var locName = localNameGet.call(this);
+		if(typeof locName === "string") {
+			var i = locName.indexOf(":");
+			if (i >= 0) {
+				var prefix = locName.substr(0, i);
+				var suffix = locName.substr(i+1);
+				//console.log("localName: " + prefix + " : " + suffix);
+				if (this.lookupNamespaceURI(prefix) !== null) {
+					return suffix;
+				}
+			}
+		}
+		return locName;
+	};
+	
+	namespaceURIProp.get = function(){
+		var locName = localNameGet.call(this);
+		if(typeof locName === "string") {
+			var i = locName.indexOf(":");
+			if (i >= 0) {
+				var prefix = locName.substr(0, i);
+				var suffix = locName.substr(i+1);
+				var ns = this.lookupNamespaceURI(prefix);
+				if (ns !== null) {
+					return ns;
+				}
+			}
+		}
+		return namespaceURIGet.call(this);
+	}
+
+	Object.defineProperty(Element.prototype, "tagName", tagNameProp);
+	Object.defineProperty(Node.prototype, "localName", localNameProp);
+	Object.defineProperty(Node.prototype, "namespaceURI", namespaceURIProp);
+	
+	
+}
+
 })();

@@ -50,7 +50,7 @@
         this.ready = false;
         this._xhr.open("POST", this.getAttribute('src'), true);
         this._xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-        this._xhr.setRequestHeader("Accept", this.getAttribute('type'))
+        this._xhr.setRequestHeader("Accept", this.getAttribute('type') || 'application/sparql-results+json')
         this._xhr.send("query=" + encodeURIComponent(this.textContent));
     }
 
@@ -58,8 +58,15 @@
         this.ready = (this._xhr.readyState == 4);
         if(!this.ready) return;
 
-        this.data = JSON.parse(this._xhr.response)
-        console.log(this.data);
+        try {
+            this.data = JSON.parse(this._xhr.response)
+            console.log(this.data);
+        } catch(e) {
+            console.log(this._xhr.response);
+            console.log(e);
+            this.textContent = this._xhr.response;
+            this.data = this._xhr.response;
+        }
         this.dispatchEvent(new Event("data"))
     }
 

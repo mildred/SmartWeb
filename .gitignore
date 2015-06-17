@@ -15,3 +15,8 @@
 /ckbuilder.*.jar
 /web/sha1:*
 /edit/
+/webcomponentsjs/
+/web/
+/example/
+*.swp
+

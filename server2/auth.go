@@ -5,32 +5,34 @@ import (
 	"crypto/x509"
 	"github.com/mildred/SmartWeb/sparql"
 	"net/url"
+	"strings"
 )
 
 func checkAuth(dataSet *sparql.Client, u *url.URL, method, user string) (bool, error) {
 	var parentChain string
+	var defaultGraph []string
 	for _, url := range urlParents(u) {
 		parentChain = parentChain + sparql.MakeQuery(" %1u", url.String())
+		defaultGraph = append(defaultGraph, sparql.MakeQuery("FROM %1u", url.String()))
 	}
 
 	res, err := dataSet.Select(sparql.MakeQuery(`
 		PREFIX sw: <tag:mildred.fr,2015-05:SmartWeb#>
 
 		SELECT ?page ?acl ?user ?auth ?act
+		%1q
 		WHERE {
-			VALUES ?src { %1q }
-			?page
-				sw:child* ?src .
+			VALUES ?page { %2q }
 			?acl
 				a        sw:ACL ;
 				sw:about ?page ;
 				sw:user+ ?user ;
 				?auth    ?act .
-			VALUES ?user { %3u sw:Anonymous }
+			VALUES ?user { %4u sw:Anonymous }
 			VALUES ?auth { sw:allow sw:deny }
-			VALUES ?act { %2s sw:Default }
+			VALUES ?act { %3s sw:Default }
 		}
-	`, parentChain, method, user))
+	`, strings.Join(defaultGraph, "\n		"), parentChain, method, user))
 	if err != nil {
 		return false, err
 	}

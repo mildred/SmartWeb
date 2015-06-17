@@ -5,13 +5,45 @@
     <script src="webcomponents-lite.js"></script>
     <link rel="import" href="sparql-query-data.html"/>
     <link rel="import" href="namespaces.html"/>
+    <script src="XMLBinding.js"></script>
+    <script src="template.js"></script>
 </head>
 <body>
     <!-- TODO: declare this custom element using xmlns instead of webcomponent dash prefix and have a javascript library to translate this to HTML web components -->
-    <ds-sparql-query src="http://localhost:9999/bigdata/namespace/smartweb/sparql" id="query">
+    <ds-sparql-query src="http://localhost:8000/" id="query">
+        PREFIX sw: &lt;tag:mildred.fr,2015-05:SmartWeb#&gt;
         SELECT *
-        WHERE { ?s ?p ?o }
+        WHERE {
+            GRAPH ?g {
+                ?s ?p ?o .
+            }
+        }
+        LIMIT 10
     </ds-sparql-query>
+	
+	<template:test template:attr="value"></template:test>
+
+    <template id="table-template">
+        <!-- use shadow dom style templating -->
+        <table template:variable="data">
+            <tr>
+                <th template:select="data.head.vars" template:variable="head">
+                    <template:value select="head"/>
+                </th>
+            </tr>
+            <tr template:select="data.results.bindings" template:variable="row">
+                <td template:select="data.head.vars" template:variable="head">
+                    <template:value select="JSON.stringify(row[head].value)"></template:value>
+					<small>
+                    <template:value select="JSON.stringify(row[head].value)"></template:value>
+					</small>
+                </td>
+            </tr>
+        </table>
+    </template>
+
+    <template-instance template="table-template" data-set="query"/>
+<!--
 
     <data-template for="query" format="application/sparql-results+json" variable="data">
         <table>
@@ -49,5 +81,6 @@
     <script>
         console.log(document.body.firstElementChild.data)
     </script>
+    -->
 </body>
 </html>

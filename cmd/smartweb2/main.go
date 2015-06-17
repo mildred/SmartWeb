@@ -122,8 +122,8 @@ func main() {
 	s := &http.Server{
 		Addr:           *listen,
 		Handler:        srv,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		ReadTimeout:    0, //10 * time.Second,
+		WriteTimeout:   0, //10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 

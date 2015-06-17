@@ -56,28 +56,42 @@ instance.compute = function() {
     var template = this.ownerDocument.getElementById(this.getAttribute("template"))
     var data_set = this.ownerDocument.getElementById(this.getAttribute("data-set"))
     var data = data_set.data
-    console.log({template: template, data_set: data_set, data: data});
+    //console.log({template: template, data_set: data_set, data: data});
     this.innerHTML = ""
     this.appendChild(template.content.cloneNode(true))
     process.bind(this)(data, {})
 }
 
 function process(context, vars){
-    vars = {__proto__: vars}
     var newContext = false
     if(this.hasAttributeNS(TEMPLATE_NS, "select")) {
         var code = this.getAttributeNS(TEMPLATE_NS, "select")
         //console.log("eval("+code+"):")
         //console.log({vars: vars, context:context})
-        with(vars) context = eval(code)
+		try {
+	        with(vars) context = eval(code)
+			//console.log({element: this, vars: vars, ok: true, parent: this.parentElement});
+		} catch (e) {
+			console.warn(e);
+			console.log({element: this, vars: vars, ok: false, parent: this.parentElement});
+		}
         this.removeAttributeNS(TEMPLATE_NS, "select")
         newContext = true
     } else if (this.namespaceURI == TEMPLATE_NS && this.hasAttributeNS("", "select")) {
         var code = this.getAttributeNS("", "select")
-        with(vars) context = eval(code)
+		try {
+	        with(vars) context = eval(code)			
+			//console.log({element: this, vars: vars, ok: true, parent: this.parentElement});
+		} catch (e) {
+			console.warn(e);
+			console.log({element: this, vars: vars, ok: false, parent: this.parentElement});
+			context = e
+		}
         this.removeAttributeNS("", "select")
         newContext = true
     }
+	//console.group("Process");
+	//console.log({process: this, context: context})
     if (this.namespaceURI == TEMPLATE_NS && this.localName == "value") {
         var newnode = this.ownerDocument.createTextNode(context);
         this.parentElement.insertBefore(newnode, this);
@@ -85,22 +99,40 @@ function process(context, vars){
     } else if (newContext && context instanceof Array) {
         for(var i = 0; i < context.length; ++i) {
             var n = this.cloneNode(true)
-            follow.bind(n)(context[i]);
+			//console.log("Context dataset " + i + "/" + (context.length-1));
+            follow.call(n, context[i], vars);
             this.parentElement.insertBefore(n, this)
         }
         this.remove()
     } else {
-        follow.bind(this)(context);
+        follow.call(this, context, vars);
     }
+	//console.groupEnd();
 
-    function follow(context){
+    function follow(context, vars){
+		//console.log({elem: this, html: this.outerHTML, hasVar: this.hasAttributeNS(TEMPLATE_NS, "variable")});
         if(this.hasAttributeNS(TEMPLATE_NS, "variable")) {
-            vars[this.getAttributeNS(TEMPLATE_NS, "variable")] = context
-            this.removeAttributeNS(TEMPLATE_NS, "variable")
-        }
-        for(var i = 0; i < this.children.length; ++i) {
-            process.bind(this.children[i])(context, vars)
-        }
+			var varName = this.getAttributeNS(TEMPLATE_NS, "variable");
+			vars = {__proto__: vars, [varName]: context}
+            this.removeAttributeNS(TEMPLATE_NS, "variable");
+			//console.log("Follow " + this.children.length + " children (using "+varName+")");
+			//console.log({[varName]: context});
+        //} else {
+			//console.trace();
+			//console.log("Follow " + this.children.length + " children");
+		}
+		//console.log({follow: this, children: this.children, vars: vars})
+		var child = this.firstElementChild
+		//var i = 0, max = this.children.length;
+		while (child) {
+			var nextChild = child.nextElementSibling;
+			//console.group("Follow child " + (++i) + "/" + max);
+			//console.log({follow_process: child, vars: vars})
+            process.call(child, context, vars)
+			//console.groupEnd();
+			child = nextChild;
+		}
+		//console.log(i + " children followed");
     }
 }
 
